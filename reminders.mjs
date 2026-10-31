@@ -8,7 +8,7 @@
 const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
-const SITE_URL = "https://TON-SITE.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (B2-3 ou C-5)
+const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (B2-3 ou C-5)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
