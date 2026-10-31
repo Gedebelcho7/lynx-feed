@@ -1,0 +1,25 @@
+name: Rappels matchs + flux RSS
+on:
+  schedule:
+    - cron: "5 * * * *"   # toutes les heures (heure UTC)
+  workflow_dispatch: {}    # permet aussi de le lancer à la main pour tester
+jobs:
+  rappels:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # pour committer feed.xml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install web-push
+      - run: node reminders.mjs
+        env:
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+      - name: Commit du flux RSS si modifié
+        run: |
+          git config user.name "LynxBot"
+          git config user.email "lynxbot@users.noreply.github.com"
+          git add feed.xml
+          git diff --cached --quiet || (git commit -m "Flux RSS mis à jour" && git push)
