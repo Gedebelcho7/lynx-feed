@@ -217,17 +217,19 @@ async function buildFeed(news, extItems, autoItems) {
     let cat = "Article";
     if (nid.startsWith("auto_result_")) cat = "Résultat";
     else if (nid.startsWith("auto_preview_")) cat = "Pronostic";
-    feedItems.push({ title: n.title, description: String(n.content || "").replace(/[#*>]/g, "").slice(0, 400), date: n.date, guid: `lynx-${nid || hashId(n.title)}`, category: cat });
+    const txt = String(n.content || "").replace(/[#*>]/g, "").trim();
+    feedItems.push({ title: n.title, description: txt.slice(0, 400), more: txt.length > 400, date: n.date, guid: `lynx-${nid || hashId(n.title)}`, category: cat });
   }
   const extSorted = [...extItems].filter(i => i.pubDate).sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate)).slice(0, MAX_EXT_ITEMS);
-  for (const it of extSorted) feedItems.push({ title: `[${it.source}] ${it.title}`, description: it.description || "", date: it.pubDate, guid: `ext-${hashId(String(it.link || it.title || "").toLowerCase())}`, category: "Presse" });
+  for (const it of extSorted) feedItems.push({ title: `[${it.source}] ${it.title}`, description: it.description || "", link: it.link || "", date: it.pubDate, guid: `ext-${hashId(String(it.link || it.title || "").toLowerCase())}`, category: "Presse" });
   for (const it of autoItems) feedItems.push(it);
   // lastBuildDate = date du dernier item → le fichier ne change que si le contenu change (pas de commit inutile)
   const sorted = feedItems.filter(i => i.date && !isNaN(new Date(i.date))).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, MAX_FEED_ITEMS);
   const last = sorted.length ? new Date(sorted[0].date).toUTCString() : new Date(0).toUTCString();
   const items = sorted.map((n) => `  <item>
     <title>${esc(n.title)}</title>
-    <description>${esc(n.description)}…</description>
+    <description>${esc(n.description)}${n.more ? " …" : ""}</description>
+    <link>${esc(n.link || SITE_URL)}</link>
     <category>${esc(n.category)}</category>
     <pubDate>${new Date(n.date).toUTCString()}</pubDate>
     <guid isPermaLink="false">${esc(n.guid)}</guid>
