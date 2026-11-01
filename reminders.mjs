@@ -8,10 +8,12 @@
 const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
-const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (B2-3 ou C-5)
+const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
+const FEED_URL = "https://GEDEBELCHO7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
+const DEFAULT_MATCH_HOUR = 20; // heure de coup d'envoi présumée pour les matchs importés/saisis sans horaire
 const MAX_EXT_ITEMS = 10;  // actus externes max dans le flux public
 const MAX_FEED_ITEMS = 50; // items max dans le flux public
 
@@ -218,17 +220,18 @@ async function buildFeed(news, extItems, autoItems) {
     if (nid.startsWith("auto_result_")) cat = "Résultat";
     else if (nid.startsWith("auto_preview_")) cat = "Pronostic";
     const txt = String(n.content || "").replace(/[#*>]/g, "").trim();
-    feedItems.push({ title: n.title, description: txt.slice(0, 400), more: txt.length > 400, date: n.date, guid: `lynx-${nid || hashId(n.title)}`, category: cat });
+    const gid = `lynx-${nid || hashId(n.title)}`;
+    feedItems.push({ title: n.title, description: txt, link: `${FEED_URL}actus.html#${gid}`, date: n.date, guid: gid, category: cat });
   }
   const extSorted = [...extItems].filter(i => i.pubDate).sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate)).slice(0, MAX_EXT_ITEMS);
-  for (const it of extSorted) feedItems.push({ title: `[${it.source}] ${it.title}`, description: it.description || "", link: it.link || "", date: it.pubDate, guid: `ext-${hashId(String(it.link || it.title || "").toLowerCase())}`, category: "Presse" });
+  for (const it of extSorted) feedItems.push({ title: `[${it.source}] ${it.title}`, description: it.description || "", link: it.link || `${FEED_URL}actus.html`, date: it.pubDate, guid: `ext-${hashId(String(it.link || it.title || "").toLowerCase())}`, category: "Presse" });
   for (const it of autoItems) feedItems.push(it);
   // lastBuildDate = date du dernier item → le fichier ne change que si le contenu change (pas de commit inutile)
   const sorted = feedItems.filter(i => i.date && !isNaN(new Date(i.date))).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, MAX_FEED_ITEMS);
   const last = sorted.length ? new Date(sorted[0].date).toUTCString() : new Date(0).toUTCString();
   const items = sorted.map((n) => `  <item>
     <title>${esc(n.title)}</title>
-    <description>${esc(n.description)}${n.more ? " …" : ""}</description>
+    <description>${esc(n.description).replace(/\n/g, "<br />")}</description>
     <link>${esc(n.link || SITE_URL)}</link>
     <category>${esc(n.category)}</category>
     <pubDate>${new Date(n.date).toUTCString()}</pubDate>
@@ -248,6 +251,177 @@ ${items}
   const fs = await import("node:fs/promises");
   await fs.writeFile("feed.xml", feed, "utf8");
   console.log(`feed.xml régénéré (${sorted.length} items : ${sorted.filter(i => i.category === "Presse").length} presse, ${sorted.filter(i => i.category === "Résultat").length} résultats, ${sorted.filter(i => i.category === "Classement" || i.category === "Stats").length} auto).`);
+  // Page publique des actus : tous les articles COMPLETS, avec ancre par article
+  // (c'est la cible des <link> du flux → « lire l'article » fonctionne partout, Feeder compris)
+  const arts = sorted.map((n) => {
+    const when = new Date(n.date);
+    const dateTxt = isNaN(when) ? "" : when.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    return `<article class="card" id="${esc(n.guid)}">
+<div class="meta">${esc(n.category)} — ${esc(dateTxt)}</div>
+<h2>${esc(n.title)}</h2>
+<p>${esc(n.description).replace(/\n/g, "<br />")}</p>
+${n.link ? `<p class="src"><a href="${esc(n.link)}">Voir en ligne ↗</a></p>` : ""}
+</article>`;
+  }).join("\n");
+  const html = `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Les Lynx de Valence — Toutes les actus</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 60px;background:#0d1117;color:#e6edf3;line-height:1.55}
+a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px 18px;margin-bottom:14px}
+.meta{font-size:.75rem;color:#8b949e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+h2{margin:0 0 10px;font-size:1.15rem}p{margin:0}
+.src{margin-top:10px}
+</style></head><body>
+<h1>🦁 Les Lynx de Valence — Toutes les actus</h1>
+<p style="color:#8b949e;font-size:.9rem">Page générée automatiquement, mise à jour toutes les heures. <a href="${esc(SITE_URL)}">Ouvrir le site ↗</a></p>
+${arts}
+</body></html>`;
+  await fs.writeFile("actus.html", html, "utf8");
+  console.log(`actus.html régénéré (${sorted.length} articles).`);
+}
+
+// Les matchs importés (FFHG/CSV) ou saisis avant la mise à jour n'ont pas d'heure → minuit.
+// Heure inconnue (00:00 heure Paris) → on applique DEFAULT_MATCH_HOUR pour tous les rappels.
+function kickoffTs(dateIso) {
+  const d = new Date(dateIso);
+  if (isNaN(d)) return 0;
+  const hm = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  if (hm === "00:00" || hm === "24:00") {
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+    return new Date(`${day}T${String(DEFAULT_MATCH_HOUR).padStart(2, "0")}:00:00+01:00`).getTime();
+  }
+  return d.getTime();
+}
+
+// ============ ALERTES BUTS EN DIRECT (flux live FFHG, côté serveur : zéro proxy, zéro CORS) ============
+async function ffhgLive(id) {
+  const url = `https://www.hockeyfrance.com/competitions/wp-admin/admin-ajax.php?action=live_rencontre_maj&rencontre_id=${id}`;
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": "LynxBot/1.0" }, signal: ctrl.signal });
+    if (!r.ok) throw new Error("FFHG HTTP " + r.status);
+    return await r.text();
+  } finally { clearTimeout(to); }
+}
+// Le flux FFHG contient parfois PLUSIEURS clés "evenements" (doublons PHP) :
+// JSON.parse ne garde que la dernière → on extrait toutes les listes du texte brut.
+function liveExtractEvents(raw) {
+  const events = [];
+  const key = '"evenements":';
+  let pos = 0;
+  while (pos < raw.length) {
+    const start = raw.indexOf(key, pos);
+    if (start === -1) break;
+    const arrStart = raw.indexOf("[", start);
+    if (arrStart === -1) break;
+    let depth = 0, inStr = false, escp = false, end = -1;
+    for (let i = arrStart; i < raw.length; i++) {
+      const ch = raw[i];
+      if (inStr) { if (escp) escp = false; else if (ch === "\\") escp = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === "[") depth++;
+      else if (ch === "]") { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end === -1) break;
+    try { const arr = JSON.parse(raw.slice(arrStart, end + 1)); if (Array.isArray(arr)) events.push(...arr); } catch (e) {}
+    pos = end + 1;
+  }
+  const byId = new Map();
+  events.forEach(ev => {
+    const k = ev.id || (ev.type + "|" + (ev.temps || 0) + "|" + (ev.equipe && ev.equipe.id));
+    const prev = byId.get(k);
+    if (!prev || JSON.stringify(ev).length > JSON.stringify(prev).length) byId.set(k, ev);
+  });
+  return [...byId.values()].sort((a, b) => (a.temps || 0) - (b.temps || 0));
+}
+// Envoie les alertes buts en push à TOUS les abonnés (config Admin → RSS → Alertes buts).
+// État de progression dans settings/live-state (vu côté serveur, partagé entre cycles).
+async function goalAlerts(settings, subs) {
+  if (!settings.liveAlertsEnabled || !settings.liveMatchId || !subs.length || !VAPID_PRIVATE_KEY) return;
+  let state = await getDoc("settings", "live-state");
+  const mid = String(settings.liveMatchId);
+  if (!state || state.matchId !== mid) state = { matchId: mid, seenGoals: "", notifiedStart: false, notifiedEnd: false };
+  if (state.notifiedEnd) return; // match terminé → plus rien à faire jusqu'au prochain match
+  const raw = await ffhgLive(mid);
+  let data = null;
+  try { data = JSON.parse(raw); } catch (e) { throw new Error("flux FFHG illisible"); }
+  if (!data || !Array.isArray(data.scores)) throw new Error("flux FFHG sans scores");
+  const evts = liveExtractEvents(raw);
+  const names = {};
+  evts.forEach(ev => { if (ev.equipe && ev.equipe.id != null) names[ev.equipe.id] = ev.equipe.libelle_court || ev.equipe.libelle || ""; });
+  const scores = data.scores;
+  const home = scores[0] || {}, away = scores[1] || {};
+  const homeName = names[home.equipe_id] || "Domicile", awayName = names[away.equipe_id] || "Visiteur";
+  const hs = home.score || 0, as = away.score || 0;
+  const isValHome = /valence/i.test(homeName);
+  const seen = (state.seenGoals ? String(state.seenGoals).split(",") : []).filter(Boolean);
+  const goals = evts.filter(ev => ev.type === "BUT" && ev.id);
+  const pushes = [];
+  if (!state.notifiedStart && (goals.length > 0 || (data.chronometre && Number(data.chronometre.milisecondes_total) > 0))) {
+    state.notifiedStart = true;
+    pushes.push({ title: "🥅 C'est parti !", body: `${homeName} - ${awayName} : le match Lynx est en cours !`, tag: `livestart_${mid}` });
+  }
+  for (const g of goals) {
+    if (seen.includes(g.id)) continue;
+    seen.push(g.id);
+    const gTeam = g.equipe ? (g.equipe.libelle_court || g.equipe.libelle || "") : "";
+    const mine = /valence/i.test(gTeam);
+    const actor = g.tireur || g.joueur || g.personne || g.buteur || {};
+    const nom = actor.nom_complet || ((actor.prenom || "") + " " + (actor.nom || "")).trim();
+    pushes.push({ title: mine ? "🚨 BUUUT Lynx !" : "😬 But pour " + (gTeam || "l'adversaire"),
+      body: `${homeName} ${hs} - ${as} ${awayName}` + (nom ? ` — ${nom}` : ""), tag: `goal_${g.id}` });
+  }
+  if (data.est_terminee && !state.notifiedEnd) {
+    state.notifiedEnd = true;
+    const nul = hs === as;
+    const won = isValHome ? hs > as : as > hs;
+    pushes.push({ title: won ? "🏆 Victoire des Lynx !" : nul ? "🏁 Match nul" : "💔 Défaite des Lynx...",
+      body: `Score final : ${homeName} ${hs} - ${as} ${awayName}`, tag: `liveend_${mid}` });
+  }
+  if (pushes.length) {
+    const webpush = (await import("web-push")).default;
+    webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    for (const p of pushes) {
+      let ok = 0;
+      for (const s of subs) {
+        try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: p.title, body: p.body, url: SITE_URL, tag: p.tag })); ok++; }
+        catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
+      }
+      console.log(`Alerte live (${p.tag}) envoyée à ${ok} abonné(s).`);
+    }
+  }
+  state.seenGoals = seen.join(",");
+  await patchDoc("settings", "live-state", state);
+  console.log(`Live FFHG : ${pushes.length} alerte(s) envoyée(s), ${seen.length} but(s) vus au total.`);
+}
+
+// Pousse les NOUVEAUX articles du site (résultats, pronostics, articles IA) aux abonnés.
+// Max 3 par cycle ; état dans settings/articles-state (date du dernier article poussé).
+async function articlePush(news, subs) {
+  const targets = subs.filter(s => !s.prefs || s.prefs.articles !== false);
+  if (!targets.length || !VAPID_PRIVATE_KEY) return;
+  const state = await getDoc("settings", "articles-state");
+  const lastDate = Number(state && state.lastDate) || 0;
+  const sorted = news.filter(n => n.title && n.date).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const fresh = sorted.filter(n => new Date(n.date).getTime() > lastDate).slice(-3);
+  if (!fresh.length) return;
+  const webpush = (await import("web-push")).default;
+  webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  for (const n of fresh) {
+    const url = `${FEED_URL}actus.html#lynx-${n.id}`;
+    let ok = 0;
+    for (const s of targets) {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "📰 Nouvel article Lynx", body: `${n.title} — clique pour le lire en entier.`, url, tag: `art_${hashId(String(n.id))}` }));
+        ok++;
+      } catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
+    }
+    console.log(`Article poussé (« ${n.title} ») à ${ok} abonné(s).`);
+  }
+  await patchDoc("settings", "articles-state", { lastDate: Math.max(...fresh.map(n => new Date(n.date).getTime())) });
 }
 
 async function main() {
@@ -258,31 +432,38 @@ async function main() {
   const activeSeason = computeActiveSeason(matches, rankings);
   console.log(`Saison active : ${activeSeason || "?"} — Matchs : ${matches.length}, News : ${news.length}`);
 
+  // 0) ALERTES BUTS EN DIRECT (si activées dans l'Admin → RSS ; échec non bloquant)
+  try { await goalAlerts(settings, subs.filter(s => !s.prefs || s.prefs.goals !== false)); } catch (e) { console.warn("Alertes live : " + (e && e.message ? e.message : e)); }
+
   // 1) RAPPELS : J-1 (fenêtre 24h→23h avant) et H-1 (dans l'heure précédant le match)
   const toSend = [];
   for (const m of matches) {
     if (!isLynxMatch(m) || isFinished(m) || !m.date) continue;
-    const T = new Date(m.date).getTime();
-    if (T <= now) continue;
+    const T = kickoffTs(m.date); // heure réelle si saisie dans l'app, sinon heure par défaut (20 h Paris)
+    const kickIso = new Date(T).toISOString();
     const isHome = /valence/i.test(m.homeTeam || "");
     const opp = isHome ? m.awayTeam : m.homeTeam;
     const lieu = isHome ? "à domicile" : "à l'extérieur";
     const affiche = isHome ? `Lynx de Valence vs ${opp}` : `${opp} vs Lynx de Valence`;
     if (now >= T - 24 * 3600e3 && now < T - 23 * 3600e3) {
-      toSend.push({ tag: `j1_${hashId(m.id)}`, title: "🏒 C'est demain !", body: `${affiche} — ${jourFr(m.date)} à ${heureFr(m.date)}, ${lieu}. Prépare ton écharpe !` });
+      toSend.push({ tag: `j1_${hashId(m.id)}`, title: "🏒 C'est demain !", body: `${affiche} — ${jourFr(m.date)} à ${heureFr(kickIso)}, ${lieu}. Prépare ton écharpe !` });
     }
     if (now >= T - 3600e3 && now < T) {
-      toSend.push({ tag: `h1_${hashId(m.id)}`, title: "🏒 C'est l'heure !", body: `${affiche} démarre à ${heureFr(m.date)} (${lieu}). Dernière heure pour mettre ton maillot !` });
+      toSend.push({ tag: `h1_${hashId(m.id)}`, title: "🏒 C'est l'heure !", body: `${affiche} démarre à ${heureFr(kickIso)} (${lieu}). Dernière heure pour mettre ton maillot !` });
+    }
+    if (now >= T && now < T + 30 * 60e3) {
+      toSend.push({ tag: `start_${hashId(m.id)}`, title: "🔴 C'est le coup d'envoi !", body: `${affiche} a commencé (${heureFr(kickIso)}) ! Allez les Lynx ! 🦁` });
     }
   }
   console.log(`Rappels à envoyer : ${toSend.length} — Abonnés push : ${subs.length}`);
-  if (toSend.length && subs.length && VAPID_PRIVATE_KEY) {
+  const reminderSubs = subs.filter(s => !s.prefs || s.prefs.reminders !== false);
+  if (toSend.length && reminderSubs.length && VAPID_PRIVATE_KEY) {
     const webpush = (await import("web-push")).default;
     webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
     for (const t of toSend) {
       if (await docExists("reminders", t.tag)) { console.log(`Déjà envoyé : ${t.tag}`); continue; }
       let ok = 0;
-      for (const s of subs) {
+      for (const s of reminderSubs) {
         try {
           await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: t.title, body: t.body, url: SITE_URL, tag: t.tag }));
           ok++;
@@ -295,25 +476,34 @@ async function main() {
     }
   }
 
-  // 2) COLLECTE DES ACTUS EXTERNES (côté serveur : les proxys enflammés de l'app ne servent plus que de secours)
-  const collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords);
-  console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
+  // 2) COLLECTE + FLUX : seulement toutes les ~50 minutes (l'action tourne désormais toutes les 5 min)
+  const rssCycle = await getDoc("settings", "rss-state");
+  const lastCollect = Number(rssCycle && rssCycle.lastCollectAt) || 0;
+  if (now - lastCollect < 50 * 60e3) {
+    console.log("Cycle rapide : collecte RSS et régénération du flux sautées (dernière il y a moins de 50 min).");
+  } else {
+    try { await patchDoc("settings", "rss-state", { lastCollectAt: now }); } catch (e) { /* non bloquant */ }
+    const collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords);
+    console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
 
-  // 3) ITEMS AUTO (templates sans IA)
-  const newsIds = new Set(news.map(n => String(n.id || "")));
-  const autoItems = [...buildResultItems(matches, newsIds, activeSeason)];
-  const statsItem = buildStatsItem(matches, roster, leaguePlayers, activeSeason);
-  if (statsItem) autoItems.push(statsItem);
-  const rankState = await getDoc("settings", "rssState");
-  const { item: rankItem, state: newRankState } = buildRankItem(rankings, activeSeason, rankState || {});
-  if (rankItem) autoItems.push(rankItem);
-  if (newRankState && (!rankState || rankState.lynxRankPos !== newRankState.lynxRankPos || rankState.lynxRankPoule !== newRankState.lynxRankPoule)) {
-    await patchDoc("settings", "rssState", newRankState);
+    // 3) ITEMS AUTO (templates sans IA)
+    const newsIds = new Set(news.map(n => String(n.id || "")));
+    const autoItems = [...buildResultItems(matches, newsIds, activeSeason)];
+    const statsItem = buildStatsItem(matches, roster, leaguePlayers, activeSeason);
+    if (statsItem) autoItems.push(statsItem);
+    const rankState = await getDoc("settings", "rssState");
+    const { item: rankItem, state: newRankState } = buildRankItem(rankings, activeSeason, rankState || {});
+    if (rankItem) autoItems.push(rankItem);
+    if (newRankState && (!rankState || rankState.lynxRankPos !== newRankState.lynxRankPos || rankState.lynxRankPoule !== newRankState.lynxRankPoule)) {
+      await patchDoc("settings", "rssState", newRankState);
+    }
+
+    // 4) FLUX RSS ENRICHI (articles IA + presse filtrée + résultats + stats + classement)
+    const extItems = [...existingExt, ...collect.fresh];
+    await buildFeed(news, extItems, autoItems);
+    // 5) PUSH « NOUVEL ARTICLE » (selon les préférences de chaque appareil ; non bloquant)
+    try { await articlePush(news, subs); } catch (e) { console.warn("Push articles : " + (e && e.message ? e.message : e)); }
   }
-
-  // 4) FLUX RSS ENRICHI (articles IA + presse filtrée + résultats + stats + classement)
-  const extItems = [...existingExt, ...collect.fresh];
-  await buildFeed(news, extItems, autoItems);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
