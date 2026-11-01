@@ -424,6 +424,25 @@ async function articlePush(news, subs) {
   await patchDoc("settings", "articles-state", { lastDate: Math.max(...fresh.map(n => new Date(n.date).getTime())) });
 }
 
+// Pousse les NOUVELLES actus presse (flux externes filtrés par les mots-clés du site) aux abonnés.
+// Max 2 par cycle ; respecte la préférence « Actus presse » (prefs.actus) de chaque appareil.
+async function actusPush(fresh, subs) {
+  const targets = subs.filter(s => !s.prefs || s.prefs.actus !== false);
+  if (!targets.length || !VAPID_PRIVATE_KEY || !Array.isArray(fresh) || !fresh.length) return;
+  const webpush = (await import("web-push")).default;
+  webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  for (const it of fresh.slice(0, 2)) {
+    let ok = 0;
+    for (const s of targets) {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🗞️ Actus Lynx", body: `${it.source} — ${it.title}`, url: it.link || `${FEED_URL}actus.html`, tag: `ext_${hashId(String(it.link || it.title || "").toLowerCase())}` }));
+        ok++;
+      } catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
+    }
+    console.log(`Actus presse poussée (« ${it.title} ») à ${ok} abonné(s).`);
+  }
+}
+
 async function main() {
   const now = Date.now();
   const [matches, subs, news, rankings, roster, leaguePlayers, existingExt, settings] = await Promise.all([
@@ -485,6 +504,7 @@ async function main() {
     try { await patchDoc("settings", "rss-state", { lastCollectAt: now }); } catch (e) { /* non bloquant */ }
     const collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords);
     console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
+    try { await actusPush(collect.fresh, subs); } catch (e) { console.warn("Push actus presse : " + (e && e.message ? e.message : e)); }
 
     // 3) ITEMS AUTO (templates sans IA)
     const newsIds = new Set(news.map(n => String(n.id || "")));
