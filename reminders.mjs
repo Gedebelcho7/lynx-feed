@@ -10,6 +10,7 @@ const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
+const KIT_VERSION = "2.9"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -211,7 +212,7 @@ function buildRankItem(rankings, activeSeason, state) {
 }
 
 // ===== FLUX RSS PUBLIC ENRICHI =====
-async function buildFeed(news, extItems, autoItems) {
+async function buildFeed(news, extItems, autoItems, ticketEvents) {
   const feedItems = [];
   for (const n of news) {
     if (!n.title || !n.date) continue;
@@ -226,6 +227,7 @@ async function buildFeed(news, extItems, autoItems) {
   const extSorted = [...extItems].filter(i => i.pubDate).sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate)).slice(0, MAX_EXT_ITEMS);
   for (const it of extSorted) feedItems.push({ title: `[${it.source}] ${it.title}`, description: it.description || "", link: it.link || `${FEED_URL}actus.html`, date: it.pubDate, guid: `ext-${hashId(String(it.link || it.title || "").toLowerCase())}`, category: "Presse" });
   for (const it of autoItems) feedItems.push(it);
+  for (const it of (ticketEvents || [])) feedItems.push({ title: "🎟️ Billetterie : " + it.label, description: "Les places sont en vente sur la billetterie en ligne du club.", link: it.url, date: new Date(it.evTs || Date.now()).toISOString(), guid: "ticket-" + hashId(String(it.url).toLowerCase()), category: "Billetterie" });
   // lastBuildDate = date du dernier item → le fichier ne change que si le contenu change (pas de commit inutile)
   const sorted = feedItems.filter(i => i.date && !isNaN(new Date(i.date))).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, MAX_FEED_ITEMS);
   const last = sorted.length ? new Date(sorted[0].date).toUTCString() : new Date(0).toUTCString();
@@ -238,6 +240,7 @@ async function buildFeed(news, extItems, autoItems) {
     <guid isPermaLink="false">${esc(n.guid)}</guid>
   </item>`).join("\n");
   const feed = `<?xml version="1.0" encoding="UTF-8"?>
+<!-- Flux Lynx de Valence — généré par reminders.mjs v${KIT_VERSION} -->
 <rss version="2.0">
 <channel>
   <title>Les Lynx de Valence — Actus officielles</title>
@@ -280,6 +283,7 @@ ${arts}
 </body></html>`;
   await fs.writeFile("actus.html", html, "utf8");
   console.log(`actus.html régénéré (${sorted.length} articles).`);
+  return sorted.length;
 }
 
 // Les matchs importés (FFHG/CSV) ou saisis avant la mise à jour n'ont pas d'heure → minuit.
@@ -469,13 +473,16 @@ async function ticketCheck(subs) {
     if (url && label) seen.push({ url, label });
   }
   let added = 0;
+  const future = [];
   for (const it of seen) {
     const id = hashId(String(it.url).toLowerCase());
+    const evTs = ticketEventDate(it.label);
+    if (evTs && evTs > Date.now() - 12 * 3600e3) future.push({ ...it, evTs });
     if (await docExists("tickets", id)) continue;
     await patchDoc("tickets", id, { url: it.url, label: it.label, detectedAt: new Date().toISOString() });
     added++;
-    const evTs = ticketEventDate(it.label);
-    if (evTs && evTs > Date.now() - 12 * 3600e3 && subs.length && VAPID_PRIVATE_KEY) {
+    const evTs2 = ticketEventDate(it.label);
+    if (evTs2 && evTs2 > Date.now() - 12 * 3600e3 && subs.length && VAPID_PRIVATE_KEY) {
       try {
         const webpush = (await import("web-push")).default;
         webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -489,6 +496,7 @@ async function ticketCheck(subs) {
     }
   }
   console.log(`Billetterie : ${seen.length} évènement(s) en vente listé(s), ${added} nouveau(x) enregistré(s).`);
+  return { seen: seen.length, added, future, at: new Date().toISOString() };
 }
 
 async function main() {
@@ -498,6 +506,25 @@ async function main() {
   ]);
   const activeSeason = computeActiveSeason(matches, rankings);
   console.log(`Saison active : ${activeSeason || "?"} — Matchs : ${matches.length}, News : ${news.length}`);
+  console.log(`Kit Lynx v${KIT_VERSION} (reminders.mjs)`);
+
+  // 0bis) TEST DES NOTIFICATIONS demandé depuis Admin → Diagnostic de l'app (settings/push-test)
+  try {
+    const pt = await getDoc("settings", "push-test");
+    if (pt && pt.requestedAt && (!pt.pushedAt || String(pt.pushedAt) < String(pt.requestedAt))) {
+      let ok = 0;
+      if (subs.length && VAPID_PRIVATE_KEY) {
+        const webpush = (await import("web-push")).default;
+        webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+        for (const s of subs) {
+          try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🏒 Lynx de Valence — test", body: "Si tu lis ça, les notifications marchent ! 🎉", url: SITE_URL, tag: "diag-test" })); ok++; }
+          catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
+        }
+      }
+      await patchDoc("settings", "push-test", { pushedAt: pt.requestedAt, pushedTo: ok, pushedAtIso: new Date().toISOString() });
+      console.log(`Test notifications : poussé à ${ok} abonné(s).`);
+    }
+  } catch (e) { console.warn("Test push : " + (e && e.message ? e.message : e)); }
 
   // 0) ALERTES BUTS EN DIRECT (si activées dans l'Admin → RSS ; échec non bloquant)
   try { await goalAlerts(settings, subs.filter(s => !s.prefs || s.prefs.goals !== false)); } catch (e) { console.warn("Alertes live : " + (e && e.message ? e.message : e)); }
@@ -548,12 +575,14 @@ async function main() {
   const lastCollect = Number(rssCycle && rssCycle.lastCollectAt) || 0;
   if (now - lastCollect < 50 * 60e3) {
     console.log("Cycle rapide : collecte RSS et régénération du flux sautées (dernière il y a moins de 50 min).");
+    try { await patchDoc("settings", "health", { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: "rapide (5 min)", subsCount: subs.length }); } catch (e) {}
   } else {
     try { await patchDoc("settings", "rss-state", { lastCollectAt: now }); } catch (e) { /* non bloquant */ }
     const collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords);
     console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
     try { await actusPush(collect.fresh, subs); } catch (e) { console.warn("Push actus presse : " + (e && e.message ? e.message : e)); }
-    try { await ticketCheck(subs); } catch (e) { console.warn("Billetterie : " + (e && e.message ? e.message : e)); }
+    let tkt = { seen: 0, added: 0, future: [], at: new Date().toISOString() };
+    try { tkt = await ticketCheck(subs); } catch (e) { console.warn("Billetterie : " + (e && e.message ? e.message : e)); }
 
     // 3) ITEMS AUTO (templates sans IA)
     const newsIds = new Set(news.map(n => String(n.id || "")));
@@ -569,9 +598,13 @@ async function main() {
 
     // 4) FLUX RSS ENRICHI (articles IA + presse filtrée + résultats + stats + classement)
     const extItems = [...existingExt, ...collect.fresh];
-    await buildFeed(news, extItems, autoItems);
+    const feedCount = await buildFeed(news, extItems, autoItems, tkt.future);
     // 5) PUSH « NOUVEL ARTICLE » (selon les préférences de chaque appareil ; non bloquant)
     try { await articlePush(news, subs); } catch (e) { console.warn("Push articles : " + (e && e.message ? e.message : e)); }
+    // 6) DOC DE SANTÉ : ce que l'Admin → Diagnostic de l'affiche affiche
+    try {
+      await patchDoc("settings", "health", { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: "complet (RSS + billetterie)", subsCount: subs.length, rssCycleAt: new Date().toISOString(), extFresh: collect.fresh.length, feedsFailed: String((collect.failed || []).join(" ; ")).slice(0, 300), lastTicketCheckAt: tkt.at, billetterieSeen: tkt.seen, billetterieAdded: tkt.added, feedItems: feedCount });
+    } catch (e) { console.warn("health : " + (e && e.message ? e.message : e)); }
   }
 }
 
