@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Flux Lynx de Valence — généré par reminders.mjs v2.9 -->
+<!-- Flux Lynx de Valence — généré par reminders.mjs v2.11 -->
 <rss version="2.0">
 <channel>
   <title>Les Lynx de Valence — Actus officielles</title>
@@ -20,7 +20,7 @@
     <description>Meilleur pointeur de la ligue : BASKOV Aleksei (VALENCE, 12 pts).</description>
     <link>https://lnx-data.netlify.app/</link>
     <category>Stats</category>
-    <pubDate>Mon, 02 Nov 2026 16:36:32 GMT</pubDate>
+    <pubDate>Mon, 02 Nov 2026 17:29:22 GMT</pubDate>
     <guid isPermaLink="false">stats-2026-2027-2026-w43</guid>
   </item>
   <item>
