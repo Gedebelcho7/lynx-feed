@@ -9,7 +9,7 @@ const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
-const FEED_URL = "https://GEDEBELCHO7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
+const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -443,6 +443,54 @@ async function actusPush(fresh, subs) {
   }
 }
 
+// ===== BILLETTERIE : surveille la mise en vente des places sur leslynx.com/billetterie =====
+// Quand le club ajoute un bouton vers plusbilletterie.helloasso.com/fr/evenements/...,
+// on l'enregistre dans la collection "tickets" (lue par l'app pour la bannière d'accueil)
+// et on pousse une notification à tous les abonnés si le match est à venir.
+// NB : les liens de la billetterie du club sont mal fermés (<a ...>texte<a>) — la regex accepte les deux formes.
+function ticketEventDate(label) {
+  const t = normalize(String(label || ""));
+  const mm = t.match(/(\d{1,2})\s+(janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\s+(\d{4})/);
+  if (!mm) return null;
+  const months = { janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12 };
+  const d = new Date(Number(mm[3]), months[mm[2]] - 1, Number(mm[1]));
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
+async function ticketCheck(subs) {
+  const r = await fetch("https://www.leslynx.com/billetterie", { headers: { "User-Agent": "Mozilla/5.0 (compatible; LynxBot/1.0)" }, signal: AbortSignal.timeout(15000), redirect: "follow" });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const html = await r.text();
+  const re = new RegExp('<a[^>]+href="(https?:\\/\\/[^"]*helloasso[^"]*evenement[^"]*)"[^>]*>([\\s\\S]*?)(?:<\\/a>|<a[\\s>])', 'gi');
+  const seen = [];
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const url = m[1];
+    const label = m[2].replace(/<br\s*\/?>/gi, " · ").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (url && label) seen.push({ url, label });
+  }
+  let added = 0;
+  for (const it of seen) {
+    const id = hashId(String(it.url).toLowerCase());
+    if (await docExists("tickets", id)) continue;
+    await patchDoc("tickets", id, { url: it.url, label: it.label, detectedAt: new Date().toISOString() });
+    added++;
+    const evTs = ticketEventDate(it.label);
+    if (evTs && evTs > Date.now() - 12 * 3600e3 && subs.length && VAPID_PRIVATE_KEY) {
+      try {
+        const webpush = (await import("web-push")).default;
+        webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+        let ok = 0;
+        for (const s of subs) {
+          try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🎟️ Billetterie Lynx : places en vente !", body: it.label, url: it.url, tag: "ticket_" + id })); ok++; }
+          catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
+        }
+        console.log(`Billetterie : mise en vente détectée (« ${it.label} ») poussée à ${ok} abonné(s).`);
+      } catch (e) { console.warn("push billetterie : " + (e && e.message ? e.message : e)); }
+    }
+  }
+  console.log(`Billetterie : ${seen.length} évènement(s) en vente listé(s), ${added} nouveau(x) enregistré(s).`);
+}
+
 async function main() {
   const now = Date.now();
   const [matches, subs, news, rankings, roster, leaguePlayers, existingExt, settings] = await Promise.all([
@@ -505,6 +553,7 @@ async function main() {
     const collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords);
     console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
     try { await actusPush(collect.fresh, subs); } catch (e) { console.warn("Push actus presse : " + (e && e.message ? e.message : e)); }
+    try { await ticketCheck(subs); } catch (e) { console.warn("Billetterie : " + (e && e.message ? e.message : e)); }
 
     // 3) ITEMS AUTO (templates sans IA)
     const newsIds = new Set(news.map(n => String(n.id || "")));
