@@ -10,7 +10,7 @@ const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
-const KIT_VERSION = "2.9"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
+const KIT_VERSION = "2.11"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -115,8 +115,8 @@ function parseFeed(xmlText) {
   return items.filter(i => i.title);
 }
 // Récupère les flux, filtre les mots-clés, sauvegarde dans rss-items (mêmes docs que l'app)
-async function collectExternalFeeds(feeds, keywords) {
-  const fresh = []; const failed = [];
+async function collectExternalFeeds(feeds, keywords, knownIds) {
+  const fresh = []; const newItems = []; const failed = [];
   if (!Array.isArray(feeds) || !feeds.length || !Array.isArray(keywords) || !keywords.length) return { fresh, failed };
   const cutoff = Date.now() - 30 * 24 * 3600e3;
   for (const feed of feeds) {
@@ -134,12 +134,14 @@ async function collectExternalFeeds(feeds, keywords) {
         const key = String(it.link || it.title || "").trim().toLowerCase();
         const desc = String(it.description || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 400);
         const item = { title: String(it.title).slice(0, 200), link: it.link || "", description: desc, source: feed.name || "Flux externe", keywords: hits.join(", "), pubDate: d.toISOString(), fetchedAt: new Date().toISOString() };
-        await patchDoc("rss-items", hashId(key), item);
+        const iid = hashId(key);
+        await patchDoc("rss-items", iid, item);
         fresh.push(item);
+        if (!knownIds || !knownIds.has(iid)) newItems.push(item);
       }
     } catch (e) { failed.push(`${feed.name || feed.url} (${String(e.message || e).slice(0, 60)})`); }
   }
-  return { fresh, failed };
+  return { fresh, newItems, failed };
 }
 
 // ===== ITEMS AUTOMATIQUES (templates simples, 0 quota IA) =====
@@ -428,21 +430,25 @@ async function articlePush(news, subs) {
   await patchDoc("settings", "articles-state", { lastDate: Math.max(...fresh.map(n => new Date(n.date).getTime())) });
 }
 
-// Pousse les NOUVELLES actus presse (flux externes filtrés par les mots-clés du site) aux abonnés.
+// Pousse les NOUVELLES actus presse (uniquement les articles jamais vus en base — anti-doublon) aux abonnés.
 // Max 2 par cycle ; respecte la préférence « Actus presse » (prefs.actus) de chaque appareil.
-async function actusPush(fresh, subs) {
+// Les items du flux EliteProspects Transactions déclenchent une notif dédiée « Mouvement de joueur ».
+async function actusPush(newItems, subs) {
   const targets = subs.filter(s => !s.prefs || s.prefs.actus !== false);
-  if (!targets.length || !VAPID_PRIVATE_KEY || !Array.isArray(fresh) || !fresh.length) return;
+  if (!targets.length || !VAPID_PRIVATE_KEY || !Array.isArray(newItems) || !newItems.length) return;
   const webpush = (await import("web-push")).default;
   webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-  for (const it of fresh.slice(0, 2)) {
+  for (const it of newItems.slice(0, 2)) {
     let ok = 0;
+    const isMove = /transaction|mercato|recrut|eliteprospects/i.test(String(it.source || "") + " " + String(it.keywords || ""));
+    const iid = hashId(String(it.link || it.title || "").toLowerCase());
     for (const s of targets) {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🗞️ Actus Lynx", body: `${it.source} — ${it.title}`, url: it.link || `${FEED_URL}actus.html`, tag: `ext_${hashId(String(it.link || it.title || "").toLowerCase())}` }));
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: isMove ? "🔄 Mouvement de joueur" : "🗞️ Actus Lynx", body: `${it.source} — ${it.title}`, url: it.link || `${FEED_URL}actus.html`, tag: `ext_${iid}` }));
         ok++;
       } catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
     }
+    try { await patchDoc("rss-items", iid, { pushedAt: new Date().toISOString(), pushedTo: ok }); } catch (e) {}
     console.log(`Actus presse poussée (« ${it.title} ») à ${ok} abonné(s).`);
   }
 }
@@ -578,9 +584,9 @@ async function main() {
     try { await patchDoc("settings", "health", { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: "rapide (5 min)", subsCount: subs.length }); } catch (e) {}
   } else {
     try { await patchDoc("settings", "rss-state", { lastCollectAt: now }); } catch (e) { /* non bloquant */ }
-    const collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords);
-    console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
-    try { await actusPush(collect.fresh, subs); } catch (e) { console.warn("Push actus presse : " + (e && e.message ? e.message : e)); }
+    const collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords, new Set((existingExt || []).map(d => String(d.id))));
+    console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app${collect.newItems.length ? " dont " + collect.newItems.length + " nouveau(x)" : ""}.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
+    try { await actusPush(collect.newItems, subs); } catch (e) { console.warn("Push actus presse : " + (e && e.message ? e.message : e)); }
     let tkt = { seen: 0, added: 0, future: [], at: new Date().toISOString() };
     try { tkt = await ticketCheck(subs); } catch (e) { console.warn("Billetterie : " + (e && e.message ? e.message : e)); }
 
