@@ -10,7 +10,7 @@ const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
-const KIT_VERSION = "2.12"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
+const KIT_VERSION = "2.13"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -312,6 +312,30 @@ async function ffhgLive(id) {
     return await r.text();
   } finally { clearTimeout(to); }
 }
+// 🪄 Détecte automatiquement le match de Valence du jour sur les pages live de la FFHG
+// (même logique que le bouton « Trouver le match du jour » du site). Retourne "" si aucun.
+async function liveDetectToday() {
+  const urls = ["https://www.hockeyfrance.com/competitions/page-live/", "https://www.hockeyfrance.com/competitions/live/"];
+  for (const u of urls) {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const r = await fetch(u, { headers: { "User-Agent": "LynxBot/1.0" }, signal: ctrl.signal });
+      if (!r.ok) continue;
+      const html = await r.text();
+      const rx = /rencontre[\/=](\d{3,8})/g;
+      let m; const seen = new Set();
+      while ((m = rx.exec(html)) !== null) {
+        const id = m[1];
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const around = html.slice(Math.max(0, m.index - 700), Math.min(html.length, m.index + 700));
+        if (/valence/i.test(around)) { clearTimeout(to); return id; }
+      }
+    } catch (e) {} finally { clearTimeout(to); }
+  }
+  return "";
+}
 // Le flux FFHG contient parfois PLUSIEURS clés "evenements" (doublons PHP) :
 // JSON.parse ne garde que la dernière → on extrait toutes les listes du texte brut.
 function liveExtractEvents(raw) {
@@ -345,10 +369,24 @@ function liveExtractEvents(raw) {
 }
 // Envoie les alertes buts en push à TOUS les abonnés (config Admin → RSS → Alertes buts).
 // État de progression dans settings/live-state (vu côté serveur, partagé entre cycles).
-async function goalAlerts(settings, subs) {
-  if (!settings.liveAlertsEnabled || !settings.liveMatchId || !subs.length || !VAPID_PRIVATE_KEY) return;
+async function goalAlerts(settings, subs, matches) {
+  if (!settings.liveAlertsEnabled || !subs.length || !VAPID_PRIVATE_KEY) return;
+  let mid = (settings.liveMatchId ? String(settings.liveMatchId) : "").trim();
   let state = await getDoc("settings", "live-state");
-  const mid = String(settings.liveMatchId);
+  if (mid && state && state.matchId === mid && state.notifiedEnd) mid = ""; // le match configuré est terminé → on repart en détection auto
+  if (!mid) {
+    // 🪄 v2.13 : plus besoin de saisir le numéro avant chaque match — l'action trouve le match de Valence du jour toute seule.
+    // Garde-fou : si le calendrier est importé et qu'aucun match Lynx n'a lieu aujourd'hui, on ne cherche rien.
+    const list = Array.isArray(matches) ? matches : [];
+    const dayKey = (d) => { try { const x = new Date(d); return x.getUTCFullYear() + "-" + x.getUTCMonth() + "-" + x.getUTCDate(); } catch (e) { return ""; } };
+    const t = new Date(); const todayKey = t.getUTCFullYear() + "-" + t.getUTCMonth() + "-" + t.getUTCDate();
+    const hasCal = list.some(m => m && m.date && isLynxMatch(m));
+    const lynxToday = list.some(m => m && m.date && isLynxMatch(m) && dayKey(m.date) === todayKey);
+    if (hasCal && !lynxToday) return;
+    mid = await liveDetectToday();
+    if (!mid) return;
+    console.log("Alertes live : match de Valence détecté automatiquement (n° " + mid + ").");
+  }
   if (!state || state.matchId !== mid) state = { matchId: mid, seenGoals: "", notifiedStart: false, notifiedEnd: false };
   if (state.notifiedEnd) return; // match terminé → plus rien à faire jusqu'au prochain match
   const raw = await ffhgLive(mid);
@@ -533,7 +571,7 @@ async function main() {
   } catch (e) { console.warn("Test push : " + (e && e.message ? e.message : e)); }
 
   // 0) ALERTES BUTS EN DIRECT (si activées dans l'Admin → RSS ; échec non bloquant)
-  try { await goalAlerts(settings, subs.filter(s => !s.prefs || s.prefs.goals !== false)); } catch (e) { console.warn("Alertes live : " + (e && e.message ? e.message : e)); }
+  try { await goalAlerts(settings, subs.filter(s => !s.prefs || s.prefs.goals !== false), matches); } catch (e) { console.warn("Alertes live : " + (e && e.message ? e.message : e)); }
 
   // 1) RAPPELS : J-1 (fenêtre 24h→23h avant) et H-1 (dans l'heure précédant le match)
   const toSend = [];
