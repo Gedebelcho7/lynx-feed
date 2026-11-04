@@ -10,7 +10,7 @@ const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
-const KIT_VERSION = "2.13"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
+const KIT_VERSION = "2.14"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -422,8 +422,19 @@ async function goalAlerts(settings, subs, matches) {
     state.notifiedEnd = true;
     const nul = hs === as;
     const won = isValHome ? hs > as : as > hs;
+    // v2.14 : joueur du match — les staffs désignent les MVP ~1 min après le coup de sifflet final,
+    // on résout participant_joueur_id → nom via la liste des joueurs du flux.
+    let mvpTxt = "";
+    try {
+      const partMap = {};
+      (Array.isArray(data.joueurs) ? data.joueurs : []).forEach(p => {
+        if (p && p.participant_id != null) { const pmn = p.nom_complet || ((p.prenom || "") + " " + (p.nom || "")).trim(); if (pmn) partMap[p.participant_id] = pmn; }
+      });
+      const mv = (Array.isArray(data.mvps) ? data.mvps : []).map(x => partMap[x.participant_joueur_id]).filter(Boolean);
+      if (mv.length) mvpTxt = ` — ⭐ Joueur du match : ${mv.join(" et ")}`;
+    } catch (e) {}
     pushes.push({ title: won ? "🏆 Victoire des Lynx !" : nul ? "🏁 Match nul" : "💔 Défaite des Lynx...",
-      body: `Score final : ${homeName} ${hs} - ${as} ${awayName}`, tag: `liveend_${mid}` });
+      body: `Score final : ${homeName} ${hs} - ${as} ${awayName}${mvpTxt}`, tag: `liveend_${mid}` });
   }
   if (pushes.length) {
     const webpush = (await import("web-push")).default;
