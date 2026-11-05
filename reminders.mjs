@@ -8,8 +8,8 @@
 const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
-const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
-const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
+const SITE_URL = "https://TON-SITE.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
+const FEED_URL = "https://TON-PSEUDO.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
 const KIT_VERSION = "2.16"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
@@ -360,6 +360,7 @@ function specialTeamsOf(liveReports, activeSeason) {
 // v2.16 : PAGE RÉCAP PUBLIQUE (index.html à la racine du dépôt lynx-feed → servie par GitHub Pages)
 // Vitrine simple : une seule page en défilement vertical, aucun onglet, aucune IA — uniquement des données vérifiées du site.
 async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, liveReports, news, ticketEvents, activeSeason) {
+  const fs = await import("node:fs/promises"); // ⚠️ obligatoire : fs est importé localement dans chaque fonction qui écrit un fichier (comme buildFeed/buildStaticNewsHtml)
   const played = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
   const upcoming = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
   const next = upcoming[0] || null;
