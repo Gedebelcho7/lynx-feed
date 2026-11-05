@@ -10,7 +10,7 @@ const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
-const KIT_VERSION = "2.14"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
+const KIT_VERSION = "2.16"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -63,7 +63,8 @@ async function patchDoc(col, id, data) {
     else if (typeof v === "number") fields[k] = { doubleValue: v };
     else fields[k] = { stringValue: String(v) };
   }
-  const r = await fetch(`${API}/${col}/${encodeURIComponent(id)}?key=${API_KEY}`, {
+  const mask = Object.keys(fields).map(k => "updateMask.fieldPaths=" + encodeURIComponent(k)).join("&");
+  const r = await fetch(`${API}/${col}/${encodeURIComponent(id)}?key=${API_KEY}&${mask}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fields })
@@ -121,13 +122,15 @@ async function collectExternalFeeds(feeds, keywords, knownIds) {
   const cutoff = Date.now() - 30 * 24 * 3600e3;
   for (const feed of feeds) {
     if (!feed || !feed.url) continue;
+    const fk = String(feed.kws || "").split(/[;,]/).map(s => s.trim()).filter(Boolean);
+    const feedKws = fk.length ? fk : keywords;
     try {
       const r = await fetch(feed.url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; LynxBot/1.0)" }, signal: AbortSignal.timeout(15000), redirect: "follow" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const items = parseFeed(await r.text()).slice(0, 20);
       for (const it of items) {
         const hay = normalize(it.title + " " + String(it.description || "").replace(/<[^>]*>/g, " "));
-        const hits = keywords.filter(k => k && hay.includes(normalize(k)));
+        const hits = feedKws.filter(k => k && hay.includes(normalize(k)));
         if (!hits.length) continue;
         const d = it.pubDate ? new Date(it.pubDate) : new Date();
         if (isNaN(d.getTime()) || d.getTime() < cutoff) continue;
@@ -173,18 +176,81 @@ function buildResultItems(matches, newsIds, activeSeason) {
   }
   return items;
 }
-// Stats de la semaine (série en cours, meilleurs pointeurs)
-function buildStatsItem(matches, roster, leaguePlayers, activeSeason) {
+// Stats de la semaine (bilan, forme, classement, pointeurs, gardien — 100 % données du site, zéro IA)
+function buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveReports, activeSeason) {
   const played = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
-  const res = played.slice(-5).map(m => { const ih = /valence/i.test(m.homeTeam || ""); const my = ih ? m.scoreHome : m.scoreAway, op = ih ? m.scoreAway : m.scoreHome; return my > op ? "V" : my < op ? "D" : "N"; });
+  const scoreOf = (m) => { const ih = /valence/i.test(m.homeTeam || ""); return ih ? [Number(m.scoreHome), Number(m.scoreAway)] : [Number(m.scoreAway), Number(m.scoreHome)]; };
+  const res = played.slice(-5).map(m => { const [my, op] = scoreOf(m); return my > op ? "V" : my < op ? "D" : "N"; });
   let streak = 0, lastR = null;
   if (res.length) { lastR = res[res.length - 1]; for (let i = res.length - 1; i >= 0 && res[i] === lastR; i--) streak++; }
+  const bilan = played.map(m => { const [my, op] = scoreOf(m); return my > op ? "V" : my < op ? "D" : "N"; });
+  const vCount = bilan.filter(r => r === "V").length, nCount = bilan.filter(r => r === "N").length, dCount = bilan.filter(r => r === "D").length;
   const topLynx = roster.filter(p => p.season === activeSeason).map(p => ({ name: p.name, goals: Number(p.goals) || 0, pts: (Number(p.goals) || 0) + (Number(p.assists) || 0) })).sort((a, b) => b.pts - a.pts || b.goals - a.goals)[0];
+  const topBut = roster.filter(p => p.season === activeSeason).map(p => ({ name: p.name, goals: Number(p.goals) || 0 })).sort((a, b) => b.goals - a.goals)[0];
+  const topGk = goalies.filter(g => g.season === activeSeason && typeof g.pct === "number" && isFinite(g.pct) && (Number(g.mj) || 0) > 0).sort((a, b) => b.pct - a.pct)[0];
   const topLeague = leaguePlayers.filter(p => p.season === activeSeason).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0))[0];
+  const rs = rankings.filter(r => r.season === activeSeason && r.team);
+  const poule = ["A", "B"].find(p => rs.some(r => (r.poule || "A") === p && /valence/i.test(r.team || "")));
+  const rows = poule ? rs.filter(r => (r.poule || "A") === poule).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0)) : [];
+  const idx = rows.findIndex(r => /valence/i.test(r.team || ""));
+  const lastM = played[played.length - 1];
+  const next = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
   const lines = [];
-  if (streak >= 3 && lastR) lines.push(`Série en cours : ${streak} ${lastR === "V" ? "victoires" : lastR === "D" ? "défaites" : "matchs nuls"} de suite.`);
-  if (topLynx && topLynx.pts > 0) lines.push(`Meilleur pointeur des Lynx : ${topLynx.name} (${topLynx.pts} pts, dont ${topLynx.goals} buts).`);
-  if (topLeague && Number(topLeague.pts) > 0) lines.push(`Meilleur pointeur de la ligue : ${topLeague.name} (${topLeague.team}, ${topLeague.pts} pts).`);
+  if (played.length) lines.push(`Bilan de la saison : ${vCount} victoire(s), ${nCount} nul(s), ${dCount} défaite(s) en ${played.length} match(s).`);
+  if (res.length) lines.push(`Forme (5 derniers matchs) : ${res.join(" ")}.`);
+  if (streak >= 2 && lastR) lines.push(`Série en cours : ${streak} ${lastR === "V" ? "victoire(s)" : lastR === "D" ? "défaite(s)" : "match(s) nul(s)"} de suite.`);
+  if (lastM) { const [my, op] = scoreOf(lastM); const opp = /valence/i.test(lastM.homeTeam || "") ? lastM.awayTeam : lastM.homeTeam; lines.push(`Dernier match : ${opp} — score ${my}-${op}${my > op ? " (victoire)" : my < op ? " (défaite)" : " (nul)"}.`); }
+  const rep = (Array.isArray(liveReports) ? liveReports : []).filter(r => r && r.date && r.scoreHome != null && r.scoreAway != null && new Date(r.date).getTime() > Date.now() - 7 * 24 * 3600e3).sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+  if (rep && (rep.homeTeam || rep.awayTeam)) {
+    const ihRep = /valence/i.test(rep.homeTeam || "");
+    lines.push(`Match suivi en direct : ${rep.homeTeam} ${rep.scoreHome}-${rep.scoreAway} ${rep.awayTeam}${rep.isProl ? " (après prolongation)" : ""}.`);
+    if (Array.isArray(rep.perT) && rep.perT.length) { const tiers = rep.perT.map((p, i) => "T" + (i + 1) + " " + ((p && p[0]) || 0) + "-" + ((p && p[1]) || 0)).join(", ") + (Array.isArray(rep.perP) && (rep.perP[0] || rep.perP[1]) ? " (prol. " + (rep.perP[0] || 0) + "-" + (rep.perP[1] || 0) + ")" : ""); lines.push("Score par tiers : " + tiers + "."); }
+    if (Number(rep.shotsH) || Number(rep.shotsA)) lines.push(`Tirs cadrés : ${rep.shotsH || 0} - ${rep.shotsA || 0}.`);
+    const buteurs = (Array.isArray(rep.events) ? rep.events : []).filter(e => e && e.ty === "BUT" && e.who && e.side === (ihRep ? "H" : "A")).map(e => String(e.who).split("(")[0].trim() + (e.sit === "SUP" ? " (en sup. num.)" : e.sit === "INF" ? " (en inf. num.)" : ""));
+    if (buteurs.length) lines.push(`Buteurs des Lynx : ${buteurs.join(", ")}.`);
+    if (Array.isArray(rep.mvps) && rep.mvps.length) lines.push(`Joueur du match : ${rep.mvps.join(", ")}.`);
+  }
+  // v2.16 : spécial teams de la saison, calculées depuis les rapports live FFHG archivés (matchs suivis en direct uniquement)
+  const st = (function () {
+    const all = (Array.isArray(liveReports) ? liveReports : []).filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)));
+    let ppC = 0, ppG = 0, pkC = 0, pkGA = 0, shG = 0;
+    all.forEach(r => {
+      const lx = /valence/i.test(r.homeTeam || "") ? "H" : /valence/i.test(r.awayTeam || "") ? "A" : null;
+      if (!lx) return;
+      r.events.forEach(e => {
+        if (!e || !e.ty) return;
+        if (e.ty === "SANCTION") { if (e.side === lx) pkC++; else ppC++; }
+        else if (e.ty === "BUT") {
+          if (e.side === lx && e.sit === "SUP") ppG++;
+          else if (e.side !== lx && e.sit === "SUP") pkGA++;
+          if (e.side === lx && e.sit === "INF") shG++;
+        }
+      });
+    });
+    if (!ppC && !pkC) return null;
+    return { ppC, ppG, pkC, pkGA, shG, games: all.length, ppPct: ppC ? Math.round(ppG * 1000 / ppC) / 10 : null, pkPct: pkC ? Math.round((1 - pkGA / pkC) * 1000) / 10 : null };
+  })();
+  if (st) {
+    const stParts = [];
+    if (st.ppC) stParts.push(`supériorité numérique ${st.ppG}/${st.ppC} (${st.ppPct}%)`);
+    if (st.pkC) stParts.push(`infériorité ${st.pkPct}% (${st.pkGA} but(s) encaissé(s) sur ${st.pkC} pénalités)`);
+    if (st.shG) stParts.push(`${st.shG} but(s) marqué(s) en infériorité`);
+    lines.push(`Spécial teams (saison, sur ${st.games} match(s) suivis en direct) : ${stParts.join(", ")}.`);
+  }
+  if (next) lines.push(`Prochain match : ${next.homeTeam} vs ${next.awayTeam}, le ${jourFr(next.date)}.`);
+  if (idx >= 0) {
+    lines.push(`Classement : ${idx + 1}${idx === 0 ? "er" : "e"} de la poule ${poule} avec ${rows[idx].pts} pts.`);
+    const ahead = rows[idx - 1], behind = rows[idx + 1];
+    if (ahead) { const gap = Number(ahead.pts) - Number(rows[idx].pts); lines.push(`Juste devant : ${ahead.team} (${ahead.pts} pts, ${gap === 1 ? "1 point" : gap + " points"} d'écart).`); }
+    if (behind) { const gap = Number(rows[idx].pts) - Number(behind.pts); lines.push(`Juste derrière : ${behind.team} (${behind.pts} pts, ${gap === 1 ? "1 point" : gap + " points"} d'écart).`); }
+  }
+  if (topLynx && topLynx.pts > 0) lines.push(`Meilleur pointeur des Lynx : ${topLynx.name} (${topLynx.pts} pts, dont ${topLynx.goals} buts${played.length ? `, soit ${(topLynx.pts / played.length).toFixed(2).replace(".", ",")} pt/match d'équipe joué` : ""}).`);
+  if (topBut && topBut.goals > 0 && (!topLynx || topBut.name !== topLynx.name)) lines.push(`Meilleur buteur des Lynx : ${topBut.name} (${topBut.goals} buts).`);
+  if (topGk && topGk.pct > 0) lines.push(`Gardien n°1 : ${topGk.name} (${topGk.pct.toFixed(2).replace(".", ",")}% d'arrêts, ${topGk.blan || 0} blanchissage(s)).`);
+  if (topLeague && Number(topLeague.pts) > 0) {
+    const tp = matches.filter(m => m.season === activeSeason && isFinished(m) && (String(m.homeTeam || "").toLowerCase().includes(String(topLeague.team || "").toLowerCase()) || String(m.awayTeam || "").toLowerCase().includes(String(topLeague.team || "").toLowerCase()))).length;
+    lines.push(`Meilleur pointeur de la ligue : ${topLeague.name} (${topLeague.team}, ${topLeague.pts} pts${tp ? `, soit ${(Number(topLeague.pts) / tp).toFixed(2).replace(".", ",")} pt/match d'équipe` : ""}).`);
+  }
   if (!lines.length) return null;
   const d = new Date();
   const week = Math.floor((d - new Date(d.getUTCFullYear(), 0, 1)) / (7 * 24 * 3600e3));
@@ -218,6 +284,7 @@ async function buildFeed(news, extItems, autoItems, ticketEvents) {
   const feedItems = [];
   for (const n of news) {
     if (!n.title || !n.date) continue;
+    if (String(n.kind || "") === "stats") continue; // l'item auto « Stats de la semaine » représente déjà cet article dans le flux
     const nid = String(n.id || "");
     let cat = "Article";
     if (nid.startsWith("auto_result_")) cat = "Résultat";
@@ -228,7 +295,7 @@ async function buildFeed(news, extItems, autoItems, ticketEvents) {
   }
   const extSorted = [...extItems].filter(i => i.pubDate).sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate)).slice(0, MAX_EXT_ITEMS);
   for (const it of extSorted) feedItems.push({ title: `[${it.source}] ${it.title}`, description: it.description || "", link: it.link || `${FEED_URL}actus.html`, date: it.pubDate, guid: `ext-${hashId(String(it.link || it.title || "").toLowerCase())}`, category: "Presse" });
-  for (const it of autoItems) feedItems.push(it);
+  for (const it of autoItems) feedItems.push({ ...it, link: `${FEED_URL}actus.html#${it.guid}` });
   for (const it of (ticketEvents || [])) feedItems.push({ title: "🎟️ Billetterie : " + it.label, description: "Les places sont en vente sur la billetterie en ligne du club.", link: it.url, date: new Date(it.evTs || Date.now()).toISOString(), guid: "ticket-" + hashId(String(it.url).toLowerCase()), category: "Billetterie" });
   // lastBuildDate = date du dernier item → le fichier ne change que si le contenu change (pas de commit inutile)
   const sorted = feedItems.filter(i => i.date && !isNaN(new Date(i.date))).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, MAX_FEED_ITEMS);
@@ -490,7 +557,7 @@ async function actusPush(newItems, subs) {
   for (const it of newItems.slice(0, 2)) {
     let ok = 0;
     const isMove = /transaction|mercato|recrut|eliteprospects/i.test(String(it.source || "") + " " + String(it.keywords || ""));
-    const iid = hashId(String(it.link || it.title || "").toLowerCase());
+    const iid = hashId(String(it.link || it.title || "").trim().toLowerCase());
     for (const s of targets) {
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: isMove ? "🔄 Mouvement de joueur" : "🗞️ Actus Lynx", body: `${it.source} — ${it.title}`, url: it.link || `${FEED_URL}actus.html`, tag: `ext_${iid}` }));
@@ -556,8 +623,8 @@ async function ticketCheck(subs) {
 
 async function main() {
   const now = Date.now();
-  const [matches, subs, news, rankings, roster, leaguePlayers, existingExt, settings] = await Promise.all([
-    getCol("calendar"), getCol("push-subs"), getCol("news"), getCol("ranking"), getCol("roster"), getCol("league-players"), getCol("rss-items"), getSettings()
+  const [matches, subs, news, rankings, roster, leaguePlayers, goalies, liveReports, existingExt, settings] = await Promise.all([
+    getCol("calendar"), getCol("push-subs"), getCol("news"), getCol("ranking"), getCol("roster"), getCol("league-players"), getCol("goalies"), getCol("live-reports"), getCol("rss-items"), getSettings()
   ]);
   const activeSeason = computeActiveSeason(matches, rankings);
   console.log(`Saison active : ${activeSeason || "?"} — Matchs : ${matches.length}, News : ${news.length}`);
@@ -642,7 +709,7 @@ async function main() {
     // 3) ITEMS AUTO (templates sans IA)
     const newsIds = new Set(news.map(n => String(n.id || "")));
     const autoItems = [...buildResultItems(matches, newsIds, activeSeason)];
-    const statsItem = buildStatsItem(matches, roster, leaguePlayers, activeSeason);
+    const statsItem = buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveReports, activeSeason);
     if (statsItem) autoItems.push(statsItem);
     const rankState = await getDoc("settings", "rssState");
     const { item: rankItem, state: newRankState } = buildRankItem(rankings, activeSeason, rankState || {});
@@ -654,6 +721,8 @@ async function main() {
     // 4) FLUX RSS ENRICHI (articles IA + presse filtrée + résultats + stats + classement)
     const extItems = [...existingExt, ...collect.fresh];
     const feedCount = await buildFeed(news, extItems, autoItems, tkt.future);
+    // 4bis) STATS DE LA SEMAINE → aussi en article du site (badge 📈, un doc par semaine) : ce qui est dans le flux public est visible dans Actus
+    if (statsItem) { try { await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
     // 5) PUSH « NOUVEL ARTICLE » (selon les préférences de chaque appareil ; non bloquant)
     try { await articlePush(news, subs); } catch (e) { console.warn("Push articles : " + (e && e.message ? e.message : e)); }
     // 6) DOC DE SANTÉ : ce que l'Admin → Diagnostic de l'affiche affiche
