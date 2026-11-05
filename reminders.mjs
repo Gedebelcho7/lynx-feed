@@ -36,14 +36,22 @@ function fsVal(v) {
   return null;
 }
 async function getCol(col) {
-  const r = await fetch(`${API}/${col}?key=${API_KEY}&pageSize=1000`);
-  if (!r.ok) throw new Error(`Firestore GET ${col}: ${r.status}`);
-  const j = await r.json();
-  return (j.documents || []).map((d) => {
-    const o = { id: d.name.split("/").pop() };
-    for (const [k, v] of Object.entries(d.fields || {})) o[k] = fsVal(v);
-    return o;
-  });
+  // ⚠️ Firestore REST plafonne toute page à 300 documents — sans pagination, on ne voit que les 300 premiers
+  // (le calendrier en contient 500+ : tous les matchs à venir étaient invisibles, rappels compris !)
+  const out = [];
+  let token = null;
+  do {
+    const r = await fetch(`${API}/${col}?key=${API_KEY}&pageSize=300` + (token ? `&pageToken=${encodeURIComponent(token)}` : ""));
+    if (!r.ok) throw new Error(`Firestore GET ${col}: ${r.status}`);
+    const j = await r.json();
+    for (const d of (j.documents || [])) {
+      const o = { id: d.name.split("/").pop() };
+      for (const [k, v] of Object.entries(d.fields || {})) o[k] = fsVal(v);
+      out.push(o);
+    }
+    token = j.nextPageToken || null;
+  } while (token);
+  return out;
 }
 async function getDoc(col, id) {
   const r = await fetch(`${API}/${col}/${encodeURIComponent(id)}?key=${API_KEY}`);
@@ -89,6 +97,7 @@ async function delSub(id) {
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const heureFr = (iso) => new Date(iso).toLocaleTimeString("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 const jourFr = (iso) => new Date(iso).toLocaleDateString("fr-FR", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
+const dayKey = (iso) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)); } catch (e) { return ""; } };
 
 // ===== LECTURE DES FLUX RSS EXTERNES (RSS 2.0 + Atom, sans dépendance) =====
 function decodeEnt(s) {
@@ -189,12 +198,12 @@ function buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveR
   const topBut = roster.filter(p => p.season === activeSeason).map(p => ({ name: p.name, goals: Number(p.goals) || 0 })).sort((a, b) => b.goals - a.goals)[0];
   const topGk = goalies.filter(g => g.season === activeSeason && typeof g.pct === "number" && isFinite(g.pct) && (Number(g.mj) || 0) > 0).sort((a, b) => b.pct - a.pct)[0];
   const topLeague = leaguePlayers.filter(p => p.season === activeSeason).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0))[0];
-  const rs = rankings.filter(r => r.season === activeSeason && r.team);
+  const rs = (Array.isArray(rankings) ? rankings : []).filter(r => r && (!r.season || String(r.season) === String(activeSeason)) && r.team);
   const poule = ["A", "B"].find(p => rs.some(r => (r.poule || "A") === p && /valence/i.test(r.team || "")));
   const rows = poule ? rs.filter(r => (r.poule || "A") === poule).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0)) : [];
   const idx = rows.findIndex(r => /valence/i.test(r.team || ""));
   const lastM = played[played.length - 1];
-  const next = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+  const next = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m) && String(dayKey(m.date)) >= dayKey(new Date())).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
   const lines = [];
   if (played.length) lines.push(`Bilan de la saison : ${vCount} victoire(s), ${nCount} nul(s), ${dCount} défaite(s) en ${played.length} match(s).`);
   if (res.length) lines.push(`Forme (5 derniers matchs) : ${res.join(" ")}.`);
@@ -239,7 +248,7 @@ function buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveR
 }
 // Évolution du classement : compare la place des Lynx au run précédent
 function buildRankItem(rankings, activeSeason, state) {
-  const rs = rankings.filter(r => r.season === activeSeason && r.team);
+  const rs = (Array.isArray(rankings) ? rankings : []).filter(r => r && (!r.season || String(r.season) === String(activeSeason)) && r.team);
   for (const poule of ["A", "B"]) {
     const rows = rs.filter(r => (r.poule || "A") === poule).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0));
     const idx = rows.findIndex(r => /valence/i.test(r.team || ""));
@@ -357,19 +366,44 @@ function specialTeamsOf(liveReports, activeSeason) {
   return { ppC, ppG, pkC, pkGA, shG, games: all.length, ppPct: ppC ? Math.round(ppG * 1000 / ppC) / 10 : null, pkPct: pkC ? Math.round((1 - pkGA / pkC) * 1000) / 10 : null };
 }
 
+// v2.16 : classement calculé en direct depuis les résultats de la saison — utilisé quand la collection
+// ranking n'est pas importée (le site fait pareil : computeLiveRanking). Mêmes règles FFHG :
+// victoire 3 pts, victoire en prolongation 2, défaite en prolongation 1, nul 1.
+// Seuls les matchs de type « Saison » comptent ; la poule est lue sur chaque match.
+function liveRankingOf(matches, activeSeason) {
+  const teams = {};
+  (Array.isArray(matches) ? matches : []).forEach(m => {
+    if (!m || m.season !== activeSeason || !isFinished(m) || (m.type && String(m.type) !== "Saison")) return;
+    const hs = Number(m.scoreHome), as = Number(m.scoreAway);
+    if (!isFinite(hs) || !isFinite(as) || !m.homeTeam || !m.awayTeam) return;
+    const poule = String(m.poule || "").toUpperCase();
+    const add = (name) => { const k = normalize(name); if (!teams[k]) teams[k] = { team: name, pts: 0, mj: 0, v: 0, n: 0, d: 0, vp: 0, dp: 0, bp: 0, bc: 0, poule: poule }; return teams[k]; };
+    const h = add(m.homeTeam), a = add(m.awayTeam);
+    const prol = !!m.isProl;
+    h.mj++; a.mj++;
+    h.bp += hs; h.bc += as; a.bp += as; a.bc += hs;
+    const pt = (sf, sa) => sf > sa ? (prol ? 2 : 3) : sf < sa ? (prol ? 1 : 0) : 1;
+    h.pts += pt(hs, as); a.pts += pt(as, hs);
+    if (hs > as) { if (prol) { h.vp++; a.dp++; } else { h.v++; a.d++; } }
+    else if (as > hs) { if (prol) { a.vp++; h.dp++; } else { a.v++; h.d++; } }
+    else { h.n++; a.n++; }
+  });
+  return Object.values(teams);
+}
+
 // v2.16 : PAGE RÉCAP PUBLIQUE (index.html à la racine du dépôt lynx-feed → servie par GitHub Pages)
 // Vitrine simple : une seule page en défilement vertical, aucun onglet, aucune IA — uniquement des données vérifiées du site.
 async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, liveReports, news, ticketEvents, activeSeason) {
   const fs = await import("node:fs/promises"); // ⚠️ obligatoire : fs est importé localement dans chaque fonction qui écrit un fichier (comme buildFeed/buildStaticNewsHtml)
   const played = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
-  const upcoming = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const upcoming = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m) && String(dayKey(m.date)) >= dayKey(new Date())).sort((a, b) => new Date(a.date) - new Date(b.date));
   const next = upcoming[0] || null;
   const scoreOf = (m) => { const ih = /valence/i.test(m.homeTeam || ""); return ih ? [Number(m.scoreHome), Number(m.scoreAway)] : [Number(m.scoreAway), Number(m.scoreHome)]; };
   const lastM = played[played.length - 1] || null;
   const forme = played.slice(-5).map(m => { const [my, op] = scoreOf(m); return { r: my > op ? "V" : my < op ? "D" : "N", my, op, opp: /valence/i.test(m.homeTeam || "") ? m.awayTeam : m.homeTeam }; });
   const bilan = { v: 0, n: 0, d: 0 };
   played.forEach(m => { const [my, op] = scoreOf(m); if (my > op) bilan.v++; else if (my < op) bilan.d++; else bilan.n++; });
-  const rs = rankings.filter(r => r.season === activeSeason && r.team);
+  const rs = (Array.isArray(rankings) ? rankings : []).filter(r => r && (!r.season || String(r.season) === String(activeSeason)) && r.team);
   const poule = ["A", "B"].find(p => rs.some(r => (r.poule || "A") === p && /valence/i.test(r.team || "")));
   const rrows = poule ? rs.filter(r => (r.poule || "A") === poule).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0)) : [];
   const idx = rrows.findIndex(r => /valence/i.test(r.team || ""));
@@ -405,7 +439,7 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
     hero = `<section class="${card} md:col-span-2 scroll-mt-20 bg-gradient-to-br from-gray-900 to-lynx-red/20 border-lynx-red/40" id="match">
       <p class="text-xs uppercase tracking-widest text-gray-400 font-bold mb-2">Prochain match${activeSeason ? " — saison " + esc(activeSeason) : ""}</p>
       <p class="text-2xl md:text-3xl font-black">🦁 Lynx de Valence <span class="text-lynx-red">vs</span> ${esc(opp)}</p>
-      <p class="mt-2 text-gray-300">${esc(jourFr(next.date))} · <strong>${heure(next.date)}</strong> · ${isHome ? "domicile" : "extérieur"}${next.patinoire ? " · " + esc(next.patinoire) : ""}</p>
+      <p class="mt-2 text-gray-300">${esc(jourFr(next.date))} · <strong>${heure(next.date)}</strong> · ${isHome ? "domicile" : "extérieur"}${(next.patinoire || next.venue) ? " · " + esc(next.patinoire || next.venue) : ""}</p>
       ${nextPred ? `<p class="mt-2 text-sm inline-block bg-gray-950/60 rounded-full px-3 py-1">🔮 Le site prédit <strong>${esc(String(nextPred.pred.pWin))} %</strong> de victoire${nextPred.pred.expScore ? " (score probable " + esc(String(nextPred.pred.expScore)) + ")" : ""}</p>` : ""}
       <div class="mt-4 flex flex-wrap gap-3">
         <a href="${esc(SITE_URL)}" class="bg-lynx-red hover:opacity-90 text-white font-bold px-4 py-2 rounded-xl text-sm">Ouvrir le site</a>
@@ -765,9 +799,13 @@ async function ticketCheck(subs) {
 async function main() {
   const now = Date.now();
   const [matches, subs, news, rankings, roster, leaguePlayers, goalies, liveReports, existingExt, settings] = await Promise.all([
-    getCol("calendar"), getCol("push-subs"), getCol("news"), getCol("ranking"), getCol("roster"), getCol("league-players"), getCol("goalies"), getCol("live-reports"), getCol("rss-items"), getSettings()
+    getCol("calendar"), getCol("push-subs"), getCol("news"), getCol("ranking"), getCol("players"), getCol("league-players"), getCol("goalies"), getCol("live-reports"), getCol("rss-items"), getSettings()
   ]);
   const activeSeason = computeActiveSeason(matches, rankings);
+  // v2.16 : l'effectif vit dans la collection « players » (pas « roster ») ; et le classement utilisé
+  // par les stats/articles/page récap est celui importé s'il existe, sinon calculé depuis les résultats.
+  const importedRank = (Array.isArray(rankings) ? rankings : []).filter(r => r && r.season === activeSeason && r.team);
+  const liveRank = importedRank.length ? rankings : liveRankingOf(matches, activeSeason);
   console.log(`Saison active : ${activeSeason || "?"} — Matchs : ${matches.length}, News : ${news.length}`);
   console.log(`Kit Lynx v${KIT_VERSION} (reminders.mjs)`);
 
@@ -850,10 +888,10 @@ async function main() {
     // 3) ITEMS AUTO (templates sans IA)
     const newsIds = new Set(news.map(n => String(n.id || "")));
     const autoItems = [...buildResultItems(matches, newsIds, activeSeason)];
-    const statsItem = buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveReports, activeSeason);
+    const statsItem = buildStatsItem(matches, roster, leaguePlayers, goalies, liveRank, liveReports, activeSeason);
     if (statsItem) autoItems.push(statsItem);
     const rankState = await getDoc("settings", "rssState");
-    const { item: rankItem, state: newRankState } = buildRankItem(rankings, activeSeason, rankState || {});
+    const { item: rankItem, state: newRankState } = buildRankItem(liveRank, activeSeason, rankState || {});
     if (rankItem) autoItems.push(rankItem);
     if (newRankState && (!rankState || rankState.lynxRankPos !== newRankState.lynxRankPos || rankState.lynxRankPoule !== newRankState.lynxRankPoule)) {
       await patchDoc("settings", "rssState", newRankState);
@@ -863,7 +901,7 @@ async function main() {
     const extItems = [...existingExt, ...collect.fresh];
     const feedCount = await buildFeed(news, extItems, autoItems, tkt.future);
     // 4ter) PAGE RÉCAP PUBLIQUE (index.html servie par GitHub Pages à la racine du dépôt) — vitrine simple, mêmes données vérifiées
-    try { await buildHomePage(matches, roster, leaguePlayers, goalies, rankings, liveReports, news, tkt.future, activeSeason); } catch (e) { console.warn("Page récap : " + (e && e.message ? e.message : e)); }
+    try { await buildHomePage(matches, roster, leaguePlayers, goalies, liveRank, liveReports, news, tkt.future, activeSeason); } catch (e) { console.warn("Page récap : " + (e && e.message ? e.message : e)); }
     // 4bis) STATS DE LA SEMAINE → aussi en article du site (badge 📈, un doc par semaine) : ce qui est dans le flux public est visible dans Actus
     // ⚠️ la date reste celle de la PREMIÈRE publication de la semaine — la réécrire à chaque cycle faisait croire au push « nouvel article » que l'article était nouveau → re-notification ~toutes les heures
     if (statsItem) { try { const exStats = (news || []).find(n => String(n.id || "") === String(statsItem.guid)); await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: exStats && exStats.date ? exStats.date : statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
