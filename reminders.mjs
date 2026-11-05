@@ -8,7 +8,7 @@
 const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
-const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
+const SITE_URL = "https://lnx-data.netlify.app"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
 const KIT_VERSION = "2.16"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
@@ -864,7 +864,8 @@ async function main() {
     // 4ter) PAGE RÉCAP PUBLIQUE (index.html servie par GitHub Pages à la racine du dépôt) — vitrine simple, mêmes données vérifiées
     try { await buildHomePage(matches, roster, leaguePlayers, goalies, rankings, liveReports, news, tkt.future, activeSeason); } catch (e) { console.warn("Page récap : " + (e && e.message ? e.message : e)); }
     // 4bis) STATS DE LA SEMAINE → aussi en article du site (badge 📈, un doc par semaine) : ce qui est dans le flux public est visible dans Actus
-    if (statsItem) { try { await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
+    // ⚠️ la date reste celle de la PREMIÈRE publication de la semaine — la réécrire à chaque cycle faisait croire au push « nouvel article » que l'article était nouveau → re-notification ~toutes les heures
+    if (statsItem) { try { const exStats = (news || []).find(n => String(n.id || "") === String(statsItem.guid)); await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: exStats && exStats.date ? exStats.date : statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
     // 5) PUSH « NOUVEL ARTICLE » (selon les préférences de chaque appareil ; non bloquant)
     try { await articlePush(news, subs); } catch (e) { console.warn("Push articles : " + (e && e.message ? e.message : e)); }
     // 6) DOC DE SANTÉ : ce que l'Admin → Diagnostic de l'affiche affiche
