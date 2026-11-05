@@ -391,6 +391,58 @@ function liveRankingOf(matches, activeSeason) {
   return Object.values(teams);
 }
 
+// v2.16 : MOTEUR DE PRÉDICTION — porté de l'app (Poisson + forme + dom/ext, mêmes poids) → mêmes pronostics que l'onglet Prévisions
+function matchPoints(scoreFor, scoreAgainst, isProl) {
+  if (scoreFor > scoreAgainst) return isProl ? 2 : 3;
+  if (scoreFor < scoreAgainst) return isProl ? 1 : 0;
+  return 1;
+}
+function buildPoolModel(matches) {
+  const st = {};
+  const lastTs = matches.length ? Math.max(...matches.map(m => new Date(m.date).getTime() || 0)) : 0;
+  matches.forEach(m => {
+    const ageW = Math.max(0, (lastTs - (new Date(m.date).getTime() || lastTs)) / (7 * 24 * 3600e3));
+    const w = Math.pow(0.92, ageW);
+    const acc = (team, gf, ga, isHome) => {
+      const k = normalize(team);
+      if (!st[k]) st[k] = { team: team, homeGF: 0, homeGA: 0, homeM: 0, homeN: 0, awayGF: 0, awayGA: 0, awayM: 0, awayN: 0, form: [], lastTs: 0 };
+      const s = st[k];
+      if (isHome) { s.homeGF += w * gf; s.homeGA += w * ga; s.homeM += w; s.homeN++; } else { s.awayGF += w * gf; s.awayGA += w * ga; s.awayM += w; s.awayN++; }
+      const ts = new Date(m.date).getTime() || 0;
+      if (ts > (s.lastTs || 0)) s.lastTs = ts;
+      s.form.push(matchPoints(isHome ? gf : ga, isHome ? ga : gf, m.isProl));
+    };
+    acc(m.homeTeam, Number(m.scoreHome) || 0, Number(m.scoreAway) || 0, true);
+    acc(m.awayTeam, Number(m.scoreAway) || 0, Number(m.scoreHome) || 0, false);
+  });
+  const n = matches.length || 1;
+  return { stats: st, nowTs: lastTs, avgHomeGF: matches.reduce((s, m) => s + (Number(m.scoreHome) || 0), 0) / n, avgAwayGF: matches.reduce((s, m) => s + (Number(m.scoreAway) || 0), 0) / n };
+}
+function predictMatch(model, homeTeam, awayTeam, matchTs) {
+  const st = model.stats;
+  const h = st[normalize(homeTeam)], a = st[normalize(awayTeam)];
+  const hAtt = h && h.homeM ? h.homeGF / h.homeM : model.avgHomeGF;
+  const hDef = h && h.homeM ? h.homeGA / h.homeM : model.avgAwayGF;
+  const aAtt = a && a.awayM ? a.awayGF / a.awayM : model.avgAwayGF;
+  const aDef = a && a.awayM ? a.awayGA / a.awayM : model.avgHomeGF;
+  const formFactor = (s) => { const f = s ? s.form.slice(-5) : []; return f.length ? f.reduce((x, y) => x + y, 0) / (f.length * 3) : 0.5; };
+  const fh = formFactor(h), fa = formFactor(a);
+  const lamH0 = Math.max(0.15, ((hAtt + aDef) / 2) * (0.85 + 0.3 * fh));
+  const lamA0 = Math.max(0.15, ((aAtt + hDef) / 2) * (0.85 + 0.3 * fa));
+  const lamH = (matchTs && h && h.lastTs && (matchTs - h.lastTs) < 30 * 3600e3) ? lamH0 * 0.9 : lamH0;
+  const lamA = (matchTs && a && a.lastTs && (matchTs - a.lastTs) < 30 * 3600e3) ? lamA0 * 0.9 : lamA0;
+  const factorial = (x) => { let r = 1; for (let i = 2; i <= x; i++) r *= i; return r; };
+  const poissonPmf = (lambda, k) => Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k);
+  let pH = 0, pA = 0, pT = 0, best = { p: 0, s: [0, 0] };
+  for (let i = 0; i <= 9; i++) for (let j = 0; j <= 9; j++) {
+    const p = poissonPmf(lamH, i) * poissonPmf(lamA, j);
+    if (i > j) pH += p; else if (j > i) pA += p; else pT += p;
+    if (p > best.p) best = { p: p, s: [i, j] };
+  }
+  const otHc = Math.min(0.75, Math.max(0.25, 0.5 + (fh - fa) * 0.3));
+  return { pHomeWin: pH + pT * otHc, pAwayWin: pA + pT * (1 - otHc), pHomeReg: pH, pAwayReg: pA, pOtHome: otHc, pT: pT, expScore: best.s };
+}
+
 // v2.16 : PAGE RÉCAP PUBLIQUE (index.html à la racine du dépôt lynx-feed → servie par GitHub Pages)
 // Vitrine simple : une seule page en défilement vertical, aucun onglet, aucune IA — uniquement des données vérifiées du site.
 async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, liveReports, news, ticketEvents, activeSeason) {
@@ -452,6 +504,24 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
     addDuel("Victoires (saison)", (lynxRow.v || 0) + (lynxRow.vp || 0), (oppRow.v || 0) + (oppRow.vp || 0), false);
     addDuel("Joueurs dans le top pointeurs de la ligue", lpCount(lynxRow.team), lpCount(oppName), false);
   }
+  // Pronostics du modèle (mêmes poids que l'app) : prochain match + toute sa journée
+  const modelMatches = matches.filter(m => m.season === activeSeason && isFinished(m) && (!m.type || String(m.type) === "Saison") && m.homeTeam && m.awayTeam && String(m.poule || "").toUpperCase() === (poule || "B"));
+  const poolModel = modelMatches.length >= 3 ? buildPoolModel(modelMatches) : null;
+  const nextPred2 = (next && poolModel) ? predictMatch(poolModel, next.homeTeam, next.awayTeam, new Date(next.date).getTime() || 0) : null;
+  const lynxPWin = nextPred2 ? (isHomeNext ? nextPred2.pHomeWin : nextPred2.pAwayWin) : null;
+  const lynxPct = lynxPWin != null ? Math.round(lynxPWin * 100) : null;
+  const heroScore = nextPred2 ? (isHomeNext ? nextPred2.expScore[0] + "-" + nextPred2.expScore[1] : nextPred2.expScore[1] + "-" + nextPred2.expScore[0]) : "";
+  const otRisk = (nextPred2 && nextPred2.pT >= 0.18) ? " · risque de prolongation " + String(Math.round(nextPred2.pT * 100)) + " %" : "";
+  const nextJ = next && next.journee ? String(next.journee) : "";
+  const journeeList = nextJ ? matches.filter(m => m.season === activeSeason && String(m.journee || "") === nextJ && (!m.type || String(m.type) === "Saison") && m.homeTeam && m.awayTeam && String(m.poule || "").toUpperCase() === (poule || "B")).sort((a, b) => new Date(a.date) - new Date(b.date)) : [];
+  const journeePreds = journeeList.map(m => {
+    const done = isFinished(m);
+    const p = (!done && poolModel) ? predictMatch(poolModel, m.homeTeam, m.awayTeam, new Date(m.date).getTime() || 0) : null;
+    if (done) return { m: m, done: done, p: null, hs: Number(m.scoreHome), as: Number(m.scoreAway) };
+    if (p) return { m: m, done: done, p: p, hs: p.expScore[0], as: p.expScore[1] };
+    return { m: m, done: done, p: null, hs: null, as: null };
+  });
+  const posMap = new Map(rrows.map((r, i) => [normalize(r.team), i + 1]));
   // Pronostics du site, vérifiés contre les vrais résultats (mêmes règles que l'app, sans rejouer le passé)
   const preds = [];
   (Array.isArray(news) ? news : []).forEach(n => {
@@ -482,7 +552,7 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
       <p class="text-xs uppercase tracking-widest text-gray-400 font-bold mb-2">Prochain match${activeSeason ? " — saison " + esc(activeSeason) : ""}</p>
       <p class="text-2xl md:text-3xl font-black">🦁 Lynx de Valence <span class="text-lynx-red">vs</span> ${esc(opp)}</p>
       <p class="mt-2 text-gray-300">${esc(jourFr(next.date))} · <strong>${heure(next.date)}</strong> · ${isHome ? "domicile" : "extérieur"}${(next.patinoire || next.venue) ? " · " + esc(next.patinoire || next.venue) : ""}</p>
-      ${nextPred ? `<p class="mt-2 text-sm inline-block bg-gray-950/60 rounded-full px-3 py-1">🔮 Le site prédit <strong>${esc(String(nextPred.pred.pWin))} %</strong> de victoire${nextPred.pred.expScore ? " (score probable " + esc(String(nextPred.pred.expScore)) + ")" : ""}</p>` : ""}
+      ${(nextPred2 || nextPred) ? `<p class="mt-2 text-sm inline-block bg-gray-950/60 rounded-full px-3 py-1">🔮 ${nextPred2 ? `Le modèle du site donne <strong>${String(lynxPct)} %</strong> de victoire aux Lynx (score probable <strong>${heroScore}</strong>)${otRisk}` : `Le site prédit <strong>${esc(String(nextPred.pred.pWin))} %</strong> de victoire${nextPred.pred.expScore ? " (score probable " + esc(String(nextPred.pred.expScore)) + ")" : ""}`}</p>` : ""}
       <div class="mt-4 flex flex-wrap gap-3">
         <a href="${esc(SITE_URL)}" class="bg-lynx-red hover:opacity-90 text-white font-bold px-4 py-2 rounded-xl text-sm">Ouvrir le site</a>
         ${tktNext ? `<a href="${esc(tktNext.url)}" class="border border-gray-600 hover:border-white px-4 py-2 rounded-xl text-sm font-semibold">🎟️ Réserver mes places</a>` : ""}
@@ -536,11 +606,11 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
     </section>`;
   }
   let pronoSec = "";
-  if (preds.length || nextPred) {
+  if (preds.length || nextPred2 || nextPred) {
     pronoSec = `<section class="${card} scroll-mt-20" id="pronos">
       ${secH("🔮", "Pronostics du site")}
       ${preds.length ? `<p class="mb-3 text-sm">Bilan public : <strong class="text-gray-100">${pOk} pronostic(s) vérifié(s) sur ${preds.length}</strong>${pPct != null ? ` (${pPct} % de réussite)` : ""}</p>
-      <div class="space-y-2">${preds.slice(0, 3).map(p => `<div class="text-sm flex justify-between gap-2 border-b border-gray-800 pb-1.5"><span>${p.hit ? "✅" : "❌"} vs ${esc(p.opp)} <span class="text-gray-500">— prédit ${esc(String(p.pWin))} %${p.exp ? " (" + esc(p.exp) + ")" : ""}</span></span><strong>${p.my}-${p.op}</strong></div>`).join("")}</div>` : `<p class="text-sm text-gray-400">Les pronostics de l'app seront vérifiés ici au fil des résultats.</p>`}
+      <div class="space-y-2">${preds.slice(0, 3).map(p => `<div class="text-sm flex justify-between gap-2 border-b border-gray-800 pb-1.5"><span>${p.hit ? "✅" : "❌"} vs ${esc(p.opp)} <span class="text-gray-500">— prédit ${esc(String(p.pWin))} %${p.exp ? " (" + esc(p.exp) + ")" : ""}</span></span><strong>${p.my}-${p.op}</strong></div>`).join("")}</div>` : `${nextPred2 ? `<p class="mb-3 text-sm">Pronostic en cours : <strong class="text-gray-100">${String(lynxPct)} %</strong> de victoire pour les Lynx${heroScore ? " (score probable " + heroScore + ")" : ""} — il sera vérifié ici après le match.</p>` : ""}<p class="text-sm text-gray-400">Les pronostics de l'app seront vérifiés ici au fil des résultats.</p>`}
     </section>`;
   }
   let duelSec = "";
@@ -551,6 +621,69 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
       ${duelRows.map(r => `<tr class="border-t border-gray-800"><td class="px-2 py-1.5">${esc(r.label)}</td><td class="px-2 py-1.5 text-right ${r.lc}">${r.l}</td><td class="px-2 py-1.5 text-right ${r.oc}">${r.o}</td></tr>`).join("")}
       </tbody></table>
       <p class="mt-2 text-xs text-gray-500">Vert = meilleure statistique de la ligne, rouge = la moins bonne · « top pointeurs » = joueurs du club dans le top 10 de la ligue.</p>
+    </section>`;
+  }
+  let journeeSec = "";
+  if (next && journeePreds.length && rrows.length && idx >= 0) {
+    const deltaMap = {};
+    const addDelta = (team, pts, gFor, gAg) => { const k = normalize(team); if (!deltaMap[k]) deltaMap[k] = { pts: 0, bp: 0, bc: 0 }; deltaMap[k].pts += pts; deltaMap[k].bp += gFor; deltaMap[k].bc += gAg; };
+    journeePreds.forEach(j => {
+      if (j.done || j.hs === null) return;
+      const isLynxM = /valence/i.test(j.m.homeTeam || "") || /valence/i.test(j.m.awayTeam || "");
+      if (isLynxM) return;
+      if (j.hs > j.as) addDelta(j.m.homeTeam, 3, j.hs, j.as);
+      else if (j.as > j.hs) addDelta(j.m.awayTeam, 3, j.as, j.hs);
+      else { addDelta(j.m.homeTeam, 1, j.hs, j.as); addDelta(j.m.awayTeam, 1, j.as, j.hs); }
+    });
+    const lynxJ = journeePreds.find(j => /valence/i.test(j.m.homeTeam || "") || /valence/i.test(j.m.awayTeam || "")) || null;
+    const lynxHome = lynxJ ? /valence/i.test(lynxJ.m.homeTeam || "") : isHomeNext;
+    const lynxRegP = nextPred2 ? (isHomeNext ? nextPred2.pHomeReg : nextPred2.pAwayReg) : null;
+    const lynxOtP = nextPred2 ? nextPred2.pT * (isHomeNext ? nextPred2.pOtHome : 1 - nextPred2.pOtHome) : null;
+    const oppRegP = nextPred2 ? (isHomeNext ? nextPred2.pAwayReg : nextPred2.pHomeReg) : null;
+    const scenList = [
+      { k: "V", icon: "🦁", label: "Les Lynx gagnent (temps réglementaire)", pL: 3, pO: 0, p: lynxRegP },
+      { k: "VP", icon: "🦁", label: "Les Lynx gagnent en prolongation", pL: 2, pO: 1, p: lynxOtP },
+      { k: "DP", icon: "🔵", label: "Les Lynx perdent en prolongation", pL: 1, pO: 2, p: (lynxOtP != null && nextPred2) ? Math.max(0, nextPred2.pT - lynxOtP) : null },
+      { k: "D", icon: "🔵", label: "Les Lynx perdent (temps réglementaire)", pL: 0, pO: 3, p: oppRegP }
+    ];
+    const bestScen = scenList.reduce((a, b) => ((b.p || 0) > (a.p || 0) ? b : a), scenList[0]);
+    const defaultK = nextPred2 ? bestScen.k : "V";
+    const scenario = (sc) => {
+      const rows = rrows.map(r => { const k = normalize(r.team); const d = deltaMap[k] || { pts: 0, bp: 0, bc: 0 }; return { team: r.team, pts: (Number(r.pts) || 0) + d.pts, bp: (Number(r.bp) || 0) + d.bp, bc: (Number(r.bc) || 0) + d.bc }; });
+      let hs = 3, as = 2;
+      if (lynxJ && lynxJ.hs !== null) { hs = lynxJ.hs; as = lynxJ.as; }
+      const lynxWin = sc.pL > sc.pO;
+      const lynxWonScore = lynxHome ? hs > as : as > hs;
+      if (lynxWin !== lynxWonScore) { const t = hs; hs = as; as = t; }
+      if (hs === as) { if (lynxHome) { if (lynxWin) hs++; else as++; } else { if (lynxWin) as++; else hs++; } }
+      const lk = normalize(lynxRow ? lynxRow.team : (lynxHome && lynxJ ? lynxJ.m.homeTeam : (lynxJ ? lynxJ.m.awayTeam : "")));
+      const okk = normalize(oppName || (lynxHome && lynxJ ? lynxJ.m.awayTeam : (lynxJ ? lynxJ.m.homeTeam : "")));
+      const lrow = rows.find(r => normalize(r.team) === lk);
+      if (lrow) { lrow.pts += sc.pL; lrow.bp += lynxHome ? hs : as; lrow.bc += lynxHome ? as : hs; }
+      const orow = rows.find(r => normalize(r.team) === okk);
+      if (orow) { orow.pts += sc.pO; orow.bp += lynxHome ? as : hs; orow.bc += lynxHome ? hs : as; }
+      rows.sort((a, b) => b.pts - a.pts || (b.bp - b.bc) - (a.bp - a.bc) || b.bp - a.bp);
+      return rows;
+    };
+    const scenTable = (sc) => {
+      const rows = scenario(sc);
+      const isBest = nextPred2 != null && sc.k === bestScen.k;
+      const pct = sc.p != null ? Math.round(sc.p * 100) : null;
+      return `<div class="rounded-xl border ${isBest ? "border-green-500/60 bg-green-500/5" : "border-gray-800"} p-3" data-scen="${sc.k}"${sc.k === defaultK ? "" : " hidden"}>
+        <p class="font-bold mb-2 text-sm">${sc.icon} ${sc.label} — ${sc.pL} pt(s) Lynx · ${sc.pO} pt(s) ${esc(oppName)}${pct != null ? ` <span class="${isBest ? "text-green-400" : "text-gray-400"}">— ${pct} % de chances selon le modèle${isBest ? " 🔮" : ""}</span>` : ""}</p>
+        <table class="w-full text-xs"><tbody>
+        ${rows.map((r, i) => { const prev = posMap.get(normalize(r.team)); const lx = /valence/i.test(r.team || ""); const isOpp = !!oppName && sameName(r.team, oppName); const move = (prev && prev !== i + 1) ? (i + 1 < prev ? ` <span class="text-green-400">▲${prev - i - 1}</span>` : ` <span class="text-red-400">▼${i + 1 - prev}</span>`) : ""; return `<tr class="${lx ? "bg-lynx-red/10" : isOpp ? "bg-blue-500/10" : ""} border-t border-gray-800"><td class="px-2 py-1 text-gray-500">${i + 1}</td><td class="px-2 py-1 font-semibold ${lx ? "text-lynx-red" : isOpp ? "text-blue-400" : ""}">${esc(r.team)}${move}</td><td class="px-2 py-1 text-right font-black">${r.pts} pts</td></tr>`; }).join("")}
+        </tbody></table>
+      </div>`;
+    };
+    journeeSec = `<section class="${card} md:col-span-2 scroll-mt-20" id="journee">
+      ${secH("🔮", "La journée " + esc(nextJ) + " vue par le modèle")}
+      <p class="mb-3 text-xs text-gray-500">Pronostics du même moteur que le site (Poisson + forme + domicile/extérieur) — les matchs déjà joués gardent leur vrai score ; les autres comptent avec leur score prédit.</p>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-4">${journeePreds.map(j => { const lx = /valence/i.test(j.m.homeTeam || "") || /valence/i.test(j.m.awayTeam || ""); const tie = j.hs !== null && j.hs === j.as; const favHome = j.hs > j.as; const pct = (!j.done && j.p) ? Math.round(Math.max(j.p.pHomeWin, j.p.pAwayWin) * 100) : null; return `<div class="bg-gray-950/60 rounded-xl px-3 py-2 text-sm${lx ? " border border-lynx-red/40" : ""}"><span class="text-gray-400">${esc(jourFr(j.m.date))} · ${heure(j.m.date)}</span><br><span class="${!tie && favHome ? "text-green-400 font-bold" : ""}">${esc(j.m.homeTeam)}</span> <span class="font-black">${j.hs === null ? "vs" : String(j.hs) + "-" + String(j.as)}</span> <span class="${!tie && !favHome ? "text-green-400 font-bold" : ""}">${esc(j.m.awayTeam)}</span> <span class="text-xs text-gray-500">${j.done ? "✅ joué" : (pct != null ? pct + " %" : "")}</span></div>`; }).join("")}</div>
+      <p class="mb-1 text-xs font-semibold text-gray-400">Et si… ? Classement projeté selon le résultat du match Valence–${esc(oppName)} — choisis le scénario :</p>
+      <select id="scenSel" onchange="lynxScen(this.value)" class="mb-3 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm">${scenList.map(s => { const p = s.p != null ? " — " + Math.round(s.p * 100) + " %" : ""; const best = nextPred2 != null && s.k === bestScen.k; return `<option value="${s.k}"${s.k === defaultK ? " selected" : ""}>${s.icon} ${s.label}${p}${best ? " — 🔮 pronostic du modèle" : ""}</option>`; }).join("")}</select>
+      ${scenList.map(scenTable).join("")}
+      <script>function lynxScen(v){var d=document.querySelectorAll("#journee [data-scen]");for(var i=0;i<d.length;i++){d[i].hidden=d[i].getAttribute("data-scen")!==v;}}</script>
     </section>`;
   }
   let upSec = "";
@@ -583,13 +716,13 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
     <span class="font-black text-lg">🦁 <span class="text-lynx-red">Lynx</span> de Valence</span>
     <nav class="ml-auto flex gap-3 text-xs text-gray-400 overflow-x-auto whitespace-nowrap">
-      <a class="hover:text-white" href="#match">Match</a><a class="hover:text-white" href="#forme">Forme</a><a class="hover:text-white" href="#adversaire">Adversaire</a><a class="hover:text-white" href="#classement">Classement</a><a class="hover:text-white" href="#stats">Stats</a><a class="hover:text-white" href="#joueurs">Joueurs</a><a class="hover:text-white" href="#pronos">Pronos</a><a class="hover:text-white" href="#duel">Duel</a><a class="hover:text-white" href="#cal">Calendrier</a><a class="hover:text-white" href="#actus">Actus</a>
+      <a class="hover:text-white" href="#match">Match</a><a class="hover:text-white" href="#forme">Forme</a><a class="hover:text-white" href="#adversaire">Adversaire</a><a class="hover:text-white" href="#classement">Classement</a><a class="hover:text-white" href="#stats">Stats</a><a class="hover:text-white" href="#joueurs">Joueurs</a><a class="hover:text-white" href="#pronos">Pronos</a><a class="hover:text-white" href="#duel">Duel</a><a class="hover:text-white" href="#journee">Journée</a><a class="hover:text-white" href="#cal">Calendrier</a><a class="hover:text-white" href="#actus">Actus</a>
     </nav>
   </div>
 </header>
 <main class="max-w-5xl mx-auto px-4 py-6 grid md:grid-cols-2 gap-5 pb-10">
 ${hero || `<section class="${card} md:col-span-2"><p class="text-gray-400">Le calendrier de la saison n'est pas encore disponible — il s'importera automatiquement depuis l'app.</p></section>`}
-${formeSec}${advSec}${rankSec}${statsSec}${joueursSec}${pronoSec}${duelSec}${upSec}${actusSec}
+${formeSec}${advSec}${rankSec}${statsSec}${joueursSec}${pronoSec}${duelSec}${journeeSec}${upSec}${actusSec}
 </main>
 <footer class="border-t border-gray-800 py-6 text-center text-xs text-gray-500">
   <p><a class="text-gray-300 hover:text-white" href="${esc(SITE_URL)}">L'app complète 🦁</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}feed.xml">Flux RSS</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}actus.html">Toutes les actus</a></p>
@@ -597,7 +730,7 @@ ${formeSec}${advSec}${rankSec}${statsSec}${joueursSec}${pronoSec}${duelSec}${upS
 </footer>
 </body></html>`;
   await fs.writeFile("index.html", html, "utf8");
-  console.log(`index.html régénéré (récap public : ${played.length} match(s) joué(s), ${upcoming.length} à venir${st ? ", spécial teams" : ""}${oppName ? ", face-à-face " + oppName : ""}${lpTop.length ? ", top pointeurs ligue" : ""}).`);
+  console.log(`index.html régénéré (récap public : ${played.length} match(s) joué(s), ${upcoming.length} à venir${st ? ", spécial teams" : ""}${oppName ? ", face-à-face " + oppName : ""}${lpTop.length ? ", top pointeurs ligue" : ""}${journeePreds.length ? ", journée " + (nextJ || "") + " projetée" : ""}).`);
 }
 
 // Les matchs importés (FFHG/CSV) ou saisis avant la mise à jour n'ont pas d'heure → minuit.
