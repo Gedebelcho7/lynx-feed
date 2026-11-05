@@ -8,8 +8,8 @@
 const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
-const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
-const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
+const SITE_URL = "https://TON-SITE.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
+const FEED_URL = "https://TON-PSEUDO.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
 const KIT_VERSION = "2.16"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
@@ -410,6 +410,48 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   const st = specialTeamsOf(liveReports, activeSeason);
   const topPts = roster.filter(p => p.season === activeSeason).map(p => ({ name: p.name, g: Number(p.goals) || 0, a: Number(p.assists) || 0 })).map(p => ({ name: p.name, g: p.g, a: p.a, pts: p.g + p.a })).filter(p => p.pts > 0).sort((a, b) => b.pts - a.pts || b.g - a.g).slice(0, 5);
   const topGk = goalies.filter(g => g.season === activeSeason && typeof g.pct === "number" && isFinite(g.pct) && (Number(g.mj) || 0) > 0).sort((a, b) => b.pct - a.pct)[0] || null;
+  // Adversaire du prochain match : surbrillance classement, forme adverse, top ligue, face-à-face
+  const isHomeNext = next ? /valence/i.test(next.homeTeam || "") : false;
+  const oppName = next ? (isHomeNext ? next.awayTeam : next.homeTeam) : "";
+  const sameName = (a, b) => !!a && !!b && normalize(a) === normalize(b);
+  const teamSeason = (team) => matches.filter(m => m.season === activeSeason && isFinished(m) && (!m.type || String(m.type) === "Saison") && (sameName(m.homeTeam, team) || sameName(m.awayTeam, team))).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const teamFormOf = (team) => teamSeason(team).slice(-5).map(m => { const ih = sameName(m.homeTeam, team); const my = ih ? Number(m.scoreHome) : Number(m.scoreAway); const op = ih ? Number(m.scoreAway) : Number(m.scoreHome); return { r: my > op ? "V" : my < op ? "D" : "N", my, op, opp: ih ? m.awayTeam : m.homeTeam }; });
+  const lynxRow = idx >= 0 ? rrows[idx] : null;
+  const oppRow = oppName ? (rrows.find(r => sameName(r.team, oppName)) || null) : null;
+  const oppIdx = oppRow ? rrows.indexOf(oppRow) : -1;
+  const oppForme = oppName ? teamFormOf(oppName) : [];
+  const oppBilan = { v: 0, n: 0, d: 0 };
+  (oppName ? teamSeason(oppName) : []).forEach(m => { const ih = sameName(m.homeTeam, oppName); const my = ih ? Number(m.scoreHome) : Number(m.scoreAway); const op = ih ? Number(m.scoreAway) : Number(m.scoreHome); if (my > op) oppBilan.v++; else if (my < op) oppBilan.d++; else oppBilan.n++; });
+  const lpTop = (Array.isArray(leaguePlayers) ? leaguePlayers : []).filter(p => p && p.name && (!p.season || String(p.season) === String(activeSeason))).map(p => ({ name: p.name, team: p.team || "", pts: Number(p.pts) || 0, g: Number(p.goals) || 0, a: Number(p.assists) || 0 })).sort((a, b) => b.pts - a.pts || b.g - a.g).slice(0, 10);
+  const lpCount = (team) => lpTop.filter(p => sameName(p.team, team)).length;
+  // Tableau face-à-face : vert = meilleure stat de la ligne, rouge = la moins bonne
+  const duelRows = [];
+  if (lynxRow && oppRow) {
+    const nOf = (v) => { const x = Number(v); return isFinite(x) ? x : null; };
+    const ratioOf = (r) => { const bp = nOf(r.bp), bc = nOf(r.bc); return (bp !== null && bc !== null && bc > 0) ? bp / bc : null; };
+    const f2 = (v) => v.toFixed(2).replace(".", ",");
+    const addDuel = (label, lv, ov, lowerBetter, fmt) => {
+      const l = nOf(lv), o = nOf(ov);
+      if (l === null && o === null) return;
+      const disp = (v) => (v === null ? "—" : (fmt ? fmt(v) : String(v)));
+      let lc = "text-gray-300", oc = "text-gray-300";
+      if (l !== null && o !== null && l !== o) {
+        const lWin = lowerBetter ? l < o : l > o;
+        lc = lWin ? "text-green-400 bg-green-500/10 font-black" : "text-red-400 bg-red-500/10";
+        oc = lWin ? "text-red-400 bg-red-500/10" : "text-green-400 bg-green-500/10 font-black";
+      }
+      duelRows.push({ label, lc, oc, l: disp(l), o: disp(o) });
+    };
+    addDuel("Rang au classement", idx + 1, oppIdx + 1, true);
+    addDuel("Points au classement", lynxRow.pts, oppRow.pts, false);
+    addDuel("Buts marqués", lynxRow.bp, oppRow.bp, false);
+    addDuel("Buts encaissés", lynxRow.bc, oppRow.bc, true);
+    addDuel("Ratio buts marqués / encaissés", ratioOf(lynxRow), ratioOf(oppRow), false, f2);
+    addDuel("Buts marqués par match", (lynxRow.mj ? lynxRow.bp / lynxRow.mj : null), (oppRow.mj ? oppRow.bp / oppRow.mj : null), false, f2);
+    addDuel("Victoires sur les 5 derniers matchs", forme.filter(f => f.r === "V").length, oppForme.filter(f => f.r === "V").length, false);
+    addDuel("Victoires (saison)", (lynxRow.v || 0) + (lynxRow.vp || 0), (oppRow.v || 0) + (oppRow.vp || 0), false);
+    addDuel("Joueurs dans le top pointeurs de la ligue", lpCount(lynxRow.team), lpCount(oppName), false);
+  }
   // Pronostics du site, vérifiés contre les vrais résultats (mêmes règles que l'app, sans rejouer le passé)
   const preds = [];
   (Array.isArray(news) ? news : []).forEach(n => {
@@ -457,13 +499,24 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
       ${played.length ? `<p class="text-sm text-gray-400">Bilan : <strong class="text-gray-100">${bilan.v} V · ${bilan.n} N · ${bilan.d} D</strong> en ${played.length} match(s)</p>` : ""}
     </section>`;
   }
+  let advSec = "";
+  if (next && oppName) {
+    advSec = `<section class="${card} scroll-mt-20" id="adversaire">
+      ${secH("🔵", "Prochain adversaire — " + esc(oppName))}
+      ${oppRow ? `<p class="mb-2 text-lg font-bold">${oppIdx + 1}${oppIdx === 0 ? "er" : "e"} de la poule ${esc(poule || "")} · ${esc(String(Number(oppRow.pts) || 0))} pts</p>` : ""}
+      ${oppForme.length ? `<div class="flex flex-wrap gap-2 mb-3">${oppForme.map(f => `<span class="inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-white text-sm" style="background:${f.r === "V" ? "#10b981" : f.r === "D" ? "#ef4444" : "#9ca3af"}" title="${esc(f.opp)} ${f.my}-${f.op}">${f.r}</span>`).join("")}</div>` : ""}
+      ${oppForme.length ? `<p class="text-sm text-gray-400">Bilan ${esc(oppName)} : <strong class="text-gray-100">${oppBilan.v} V · ${oppBilan.n} N · ${oppBilan.d} D</strong> en ${oppBilan.v + oppBilan.n + oppBilan.d} match(s)</p>` : ""}
+      <p class="mt-2 text-sm text-gray-400">${isHomeNext ? "Les Lynx reçoivent " + esc(oppName) : "Les Lynx se déplacent chez " + esc(oppName)} — ${esc(jourFr(next.date))} à ${heure(next.date)}.</p>
+    </section>`;
+  }
   let rankSec = "";
   if (rrows.length && idx >= 0) {
     rankSec = `<section class="${card} scroll-mt-20" id="classement">
       ${secH("🏆", "Classement" + (poule ? " — poule " + esc(poule) : ""))}
       <table class="w-full text-sm"><thead><tr class="text-xs uppercase text-gray-500"><th class="px-2 py-1 text-left">#</th><th class="px-2 py-1 text-left">Équipe</th><th class="px-2 py-1 text-right">Pts</th><th class="px-2 py-1 text-right">Diff</th></tr></thead><tbody>
-      ${rrows.map((r, i) => { const lx = /valence/i.test(r.team || ""); const bp = Number(r.bp), bc = Number(r.bc); const diff = isFinite(bp) && isFinite(bc) ? bp - bc : null; return `<tr class="${lx ? "bg-lynx-red/10" : ""} border-t border-gray-800"><td class="px-2 py-1.5 text-gray-500">${i + 1}${i !== idx && Math.abs(i - idx) <= 2 ? " ⚔️" : ""}</td><td class="px-2 py-1.5 font-semibold ${lx ? "text-lynx-red" : ""}">${esc(r.team)}${lx ? " 🦁" : ""}</td><td class="px-2 py-1.5 text-right font-black">${esc(String(Number(r.pts) || 0))}</td><td class="px-2 py-1.5 text-right text-gray-400">${diff === null ? "—" : (diff > 0 ? "+" : "") + diff}</td></tr>`; }).join("")}
+      ${rrows.map((r, i) => { const lx = /valence/i.test(r.team || ""); const isOpp = !!oppName && sameName(r.team, oppName); const bp = Number(r.bp), bc = Number(r.bc); const diff = isFinite(bp) && isFinite(bc) ? bp - bc : null; return `<tr class="${lx ? "bg-lynx-red/10" : isOpp ? "bg-blue-500/10" : ""} border-t border-gray-800"><td class="px-2 py-1.5 text-gray-500">${i + 1}${i !== idx && Math.abs(i - idx) <= 2 ? " ⚔️" : ""}</td><td class="px-2 py-1.5 font-semibold ${lx ? "text-lynx-red" : isOpp ? "text-blue-400" : ""}">${esc(r.team)}${lx ? " 🦁" : isOpp ? " 🔵" : ""}</td><td class="px-2 py-1.5 text-right font-black">${esc(String(Number(r.pts) || 0))}</td><td class="px-2 py-1.5 text-right text-gray-400">${diff === null ? "—" : (diff > 0 ? "+" : "") + diff}</td></tr>`; }).join("")}
       </tbody></table>
+      <p class="mt-2 text-xs text-gray-500">🦁 Lynx de Valence${oppName ? " · 🔵 " + esc(oppName) + " (prochain adversaire)" : ""} · ⚔️ concurrents directs</p>
     </section>`;
   }
   let statsSec = "";
@@ -475,12 +528,29 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
       ${topGk ? `<p class="mt-2 text-sm text-gray-400">Gardien n°1 : <strong class="text-gray-100">${esc(topGk.name)}</strong> — ${esc(topGk.pct.toFixed(2).replace(".", ","))} % d'arrêts, ${Number(topGk.blan) || 0} blanchissage(s)</p>` : ""}
     </section>`;
   }
+  let joueursSec = "";
+  if (lpTop.length) {
+    joueursSec = `<section class="${card} scroll-mt-20" id="joueurs">
+      ${secH("🥇", "Top pointeurs de la ligue")}
+      ${lpTop.map((p, i) => { const lx = /valence/i.test(p.team || ""); const isOpp = !!oppName && sameName(p.team, oppName); return `<div class="flex justify-between items-center py-1.5 border-b border-gray-800 last:border-0${lx ? " bg-lynx-red/10 rounded-lg px-2" : isOpp ? " bg-blue-500/10 rounded-lg px-2" : ""}"><span class="font-semibold">${i + 1}. ${esc(p.name)} <span class="text-xs ${lx ? "text-lynx-red" : isOpp ? "text-blue-400" : "text-gray-500"}">${esc(p.team)}</span></span><span class="text-sm text-gray-400">${p.pts} pts <span class="text-gray-500">(${p.g} B + ${p.a} A)</span></span></div>`; }).join("")}
+    </section>`;
+  }
   let pronoSec = "";
   if (preds.length || nextPred) {
     pronoSec = `<section class="${card} scroll-mt-20" id="pronos">
       ${secH("🔮", "Pronostics du site")}
       ${preds.length ? `<p class="mb-3 text-sm">Bilan public : <strong class="text-gray-100">${pOk} pronostic(s) vérifié(s) sur ${preds.length}</strong>${pPct != null ? ` (${pPct} % de réussite)` : ""}</p>
       <div class="space-y-2">${preds.slice(0, 3).map(p => `<div class="text-sm flex justify-between gap-2 border-b border-gray-800 pb-1.5"><span>${p.hit ? "✅" : "❌"} vs ${esc(p.opp)} <span class="text-gray-500">— prédit ${esc(String(p.pWin))} %${p.exp ? " (" + esc(p.exp) + ")" : ""}</span></span><strong>${p.my}-${p.op}</strong></div>`).join("")}</div>` : `<p class="text-sm text-gray-400">Les pronostics de l'app seront vérifiés ici au fil des résultats.</p>`}
+    </section>`;
+  }
+  let duelSec = "";
+  if (duelRows.length) {
+    duelSec = `<section class="${card} md:col-span-2 scroll-mt-20" id="duel">
+      ${secH("⚔️", "Face-à-face — Lynx vs " + esc(oppName))}
+      <table class="w-full text-sm"><thead><tr class="text-xs uppercase text-gray-500"><th class="px-2 py-1 text-left">Statistique</th><th class="px-2 py-1 text-right">🦁 Lynx</th><th class="px-2 py-1 text-right">${esc(oppName)} 🔵</th></tr></thead><tbody>
+      ${duelRows.map(r => `<tr class="border-t border-gray-800"><td class="px-2 py-1.5">${esc(r.label)}</td><td class="px-2 py-1.5 text-right ${r.lc}">${r.l}</td><td class="px-2 py-1.5 text-right ${r.oc}">${r.o}</td></tr>`).join("")}
+      </tbody></table>
+      <p class="mt-2 text-xs text-gray-500">Vert = meilleure statistique de la ligne, rouge = la moins bonne · « top pointeurs » = joueurs du club dans le top 10 de la ligue.</p>
     </section>`;
   }
   let upSec = "";
@@ -513,13 +583,13 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
     <span class="font-black text-lg">🦁 <span class="text-lynx-red">Lynx</span> de Valence</span>
     <nav class="ml-auto flex gap-3 text-xs text-gray-400 overflow-x-auto whitespace-nowrap">
-      <a class="hover:text-white" href="#match">Match</a><a class="hover:text-white" href="#forme">Forme</a><a class="hover:text-white" href="#classement">Classement</a><a class="hover:text-white" href="#stats">Stats</a><a class="hover:text-white" href="#pronos">Pronos</a><a class="hover:text-white" href="#cal">Calendrier</a><a class="hover:text-white" href="#actus">Actus</a>
+      <a class="hover:text-white" href="#match">Match</a><a class="hover:text-white" href="#forme">Forme</a><a class="hover:text-white" href="#adversaire">Adversaire</a><a class="hover:text-white" href="#classement">Classement</a><a class="hover:text-white" href="#stats">Stats</a><a class="hover:text-white" href="#joueurs">Joueurs</a><a class="hover:text-white" href="#pronos">Pronos</a><a class="hover:text-white" href="#duel">Duel</a><a class="hover:text-white" href="#cal">Calendrier</a><a class="hover:text-white" href="#actus">Actus</a>
     </nav>
   </div>
 </header>
 <main class="max-w-5xl mx-auto px-4 py-6 grid md:grid-cols-2 gap-5 pb-10">
 ${hero || `<section class="${card} md:col-span-2"><p class="text-gray-400">Le calendrier de la saison n'est pas encore disponible — il s'importera automatiquement depuis l'app.</p></section>`}
-${formeSec}${rankSec}${statsSec}${pronoSec}${upSec}${actusSec}
+${formeSec}${advSec}${rankSec}${statsSec}${joueursSec}${pronoSec}${duelSec}${upSec}${actusSec}
 </main>
 <footer class="border-t border-gray-800 py-6 text-center text-xs text-gray-500">
   <p><a class="text-gray-300 hover:text-white" href="${esc(SITE_URL)}">L'app complète 🦁</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}feed.xml">Flux RSS</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}actus.html">Toutes les actus</a></p>
@@ -527,7 +597,7 @@ ${formeSec}${rankSec}${statsSec}${pronoSec}${upSec}${actusSec}
 </footer>
 </body></html>`;
   await fs.writeFile("index.html", html, "utf8");
-  console.log(`index.html régénéré (récap public : ${played.length} match(s) joué(s), ${upcoming.length} à venir${st ? ", spécial teams" : ""}).`);
+  console.log(`index.html régénéré (récap public : ${played.length} match(s) joué(s), ${upcoming.length} à venir${st ? ", spécial teams" : ""}${oppName ? ", face-à-face " + oppName : ""}${lpTop.length ? ", top pointeurs ligue" : ""}).`);
 }
 
 // Les matchs importés (FFHG/CSV) ou saisis avant la mise à jour n'ont pas d'heure → minuit.
