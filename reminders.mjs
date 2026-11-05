@@ -8,8 +8,8 @@
 const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
-const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
-const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
+const SITE_URL = "https://TON-SITE.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
+const FEED_URL = "https://TON-PSEUDO.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
 const KIT_VERSION = "2.16"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
@@ -210,26 +210,7 @@ function buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveR
     if (buteurs.length) lines.push(`Buteurs des Lynx : ${buteurs.join(", ")}.`);
     if (Array.isArray(rep.mvps) && rep.mvps.length) lines.push(`Joueur du match : ${rep.mvps.join(", ")}.`);
   }
-  // v2.16 : spécial teams de la saison, calculées depuis les rapports live FFHG archivés (matchs suivis en direct uniquement)
-  const st = (function () {
-    const all = (Array.isArray(liveReports) ? liveReports : []).filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)));
-    let ppC = 0, ppG = 0, pkC = 0, pkGA = 0, shG = 0;
-    all.forEach(r => {
-      const lx = /valence/i.test(r.homeTeam || "") ? "H" : /valence/i.test(r.awayTeam || "") ? "A" : null;
-      if (!lx) return;
-      r.events.forEach(e => {
-        if (!e || !e.ty) return;
-        if (e.ty === "SANCTION") { if (e.side === lx) pkC++; else ppC++; }
-        else if (e.ty === "BUT") {
-          if (e.side === lx && e.sit === "SUP") ppG++;
-          else if (e.side !== lx && e.sit === "SUP") pkGA++;
-          if (e.side === lx && e.sit === "INF") shG++;
-        }
-      });
-    });
-    if (!ppC && !pkC) return null;
-    return { ppC, ppG, pkC, pkGA, shG, games: all.length, ppPct: ppC ? Math.round(ppG * 1000 / ppC) / 10 : null, pkPct: pkC ? Math.round((1 - pkGA / pkC) * 1000) / 10 : null };
-  })();
+  const st = specialTeamsOf(liveReports, activeSeason); // v2.16 : logique partagée avec la page récap
   if (st) {
     const stParts = [];
     if (st.ppC) stParts.push(`supériorité numérique ${st.ppG}/${st.ppC} (${st.ppPct}%)`);
@@ -353,6 +334,165 @@ ${arts}
   await fs.writeFile("actus.html", html, "utf8");
   console.log(`actus.html régénéré (${sorted.length} articles).`);
   return sorted.length;
+}
+
+// v2.16 : spécial teams de la saison — logique partagée entre l'article stats hebdo et la page récap
+function specialTeamsOf(liveReports, activeSeason) {
+  const all = (Array.isArray(liveReports) ? liveReports : []).filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)));
+  let ppC = 0, ppG = 0, pkC = 0, pkGA = 0, shG = 0;
+  all.forEach(r => {
+    const lx = /valence/i.test(r.homeTeam || "") ? "H" : /valence/i.test(r.awayTeam || "") ? "A" : null;
+    if (!lx) return;
+    r.events.forEach(e => {
+      if (!e || !e.ty) return;
+      if (e.ty === "SANCTION") { if (e.side === lx) pkC++; else ppC++; }
+      else if (e.ty === "BUT") {
+        if (e.side === lx && e.sit === "SUP") ppG++;
+        else if (e.side !== lx && e.sit === "SUP") pkGA++;
+        if (e.side === lx && e.sit === "INF") shG++;
+      }
+    });
+  });
+  if (!ppC && !pkC) return null;
+  return { ppC, ppG, pkC, pkGA, shG, games: all.length, ppPct: ppC ? Math.round(ppG * 1000 / ppC) / 10 : null, pkPct: pkC ? Math.round((1 - pkGA / pkC) * 1000) / 10 : null };
+}
+
+// v2.16 : PAGE RÉCAP PUBLIQUE (index.html à la racine du dépôt lynx-feed → servie par GitHub Pages)
+// Vitrine simple : une seule page en défilement vertical, aucun onglet, aucune IA — uniquement des données vérifiées du site.
+async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, liveReports, news, ticketEvents, activeSeason) {
+  const played = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const upcoming = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const next = upcoming[0] || null;
+  const scoreOf = (m) => { const ih = /valence/i.test(m.homeTeam || ""); return ih ? [Number(m.scoreHome), Number(m.scoreAway)] : [Number(m.scoreAway), Number(m.scoreHome)]; };
+  const lastM = played[played.length - 1] || null;
+  const forme = played.slice(-5).map(m => { const [my, op] = scoreOf(m); return { r: my > op ? "V" : my < op ? "D" : "N", my, op, opp: /valence/i.test(m.homeTeam || "") ? m.awayTeam : m.homeTeam }; });
+  const bilan = { v: 0, n: 0, d: 0 };
+  played.forEach(m => { const [my, op] = scoreOf(m); if (my > op) bilan.v++; else if (my < op) bilan.d++; else bilan.n++; });
+  const rs = rankings.filter(r => r.season === activeSeason && r.team);
+  const poule = ["A", "B"].find(p => rs.some(r => (r.poule || "A") === p && /valence/i.test(r.team || "")));
+  const rrows = poule ? rs.filter(r => (r.poule || "A") === poule).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0)) : [];
+  const idx = rrows.findIndex(r => /valence/i.test(r.team || ""));
+  const st = specialTeamsOf(liveReports, activeSeason);
+  const topPts = roster.filter(p => p.season === activeSeason).map(p => ({ name: p.name, g: Number(p.goals) || 0, a: Number(p.assists) || 0 })).map(p => ({ name: p.name, g: p.g, a: p.a, pts: p.g + p.a })).filter(p => p.pts > 0).sort((a, b) => b.pts - a.pts || b.g - a.g).slice(0, 5);
+  const topGk = goalies.filter(g => g.season === activeSeason && typeof g.pct === "number" && isFinite(g.pct) && (Number(g.mj) || 0) > 0).sort((a, b) => b.pct - a.pct)[0] || null;
+  // Pronostics du site, vérifiés contre les vrais résultats (mêmes règles que l'app, sans rejouer le passé)
+  const preds = [];
+  (Array.isArray(news) ? news : []).forEach(n => {
+    if (!n || String(n.kind || "") !== "preview" || !n.matchId || !n.pred) return;
+    const m = matches.find(x => String(x.id || "") === String(n.matchId));
+    if (!m || !isFinished(m)) return;
+    const ih = /valence/i.test(m.homeTeam || "");
+    const my = ih ? Number(m.scoreHome) : Number(m.scoreAway);
+    const op = ih ? Number(m.scoreAway) : Number(m.scoreHome);
+    const pWin = Number(n.pred.pWin);
+    if (!isFinite(pWin)) return;
+    preds.push({ hit: (pWin >= 50) === (my > op), pWin, exp: n.pred.expScore || "", my, op, opp: ih ? m.awayTeam : m.homeTeam, date: n.date || "" });
+  });
+  preds.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  const pOk = preds.filter(p => p.hit).length;
+  const pPct = preds.length ? Math.round(pOk * 100 / preds.length) : null;
+  const nextPred = next ? ((Array.isArray(news) ? news : []).find(n => n && String(n.kind || "") === "preview" && String(n.matchId || "") === String(next.id || "") && n.pred) || null) : null;
+  const tkts = (Array.isArray(ticketEvents) ? ticketEvents : []).filter(t => t && t.url);
+  const heure = (iso) => { const h = new Date(iso).toLocaleTimeString("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }); return h === "00:00" ? "~20h00" : h; };
+  const card = "bg-gray-900/80 border border-gray-800 rounded-2xl p-5";
+  const secH = (icon, txt) => `<h2 class="font-black text-xl mb-3"><span class="text-lynx-red">${icon}</span> ${txt}</h2>`;
+  let hero = "";
+  if (next) {
+    const isHome = /valence/i.test(next.homeTeam || "");
+    const opp = isHome ? next.awayTeam : next.homeTeam;
+    const tktNext = tkts.find(t => String(t.label || "").toLowerCase().includes(String(opp || "").toLowerCase())) || (tkts.length === 1 ? tkts[0] : null);
+    hero = `<section class="${card} md:col-span-2 scroll-mt-20 bg-gradient-to-br from-gray-900 to-lynx-red/20 border-lynx-red/40" id="match">
+      <p class="text-xs uppercase tracking-widest text-gray-400 font-bold mb-2">Prochain match${activeSeason ? " — saison " + esc(activeSeason) : ""}</p>
+      <p class="text-2xl md:text-3xl font-black">🦁 Lynx de Valence <span class="text-lynx-red">vs</span> ${esc(opp)}</p>
+      <p class="mt-2 text-gray-300">${esc(jourFr(next.date))} · <strong>${heure(next.date)}</strong> · ${isHome ? "domicile" : "extérieur"}${next.patinoire ? " · " + esc(next.patinoire) : ""}</p>
+      ${nextPred ? `<p class="mt-2 text-sm inline-block bg-gray-950/60 rounded-full px-3 py-1">🔮 Le site prédit <strong>${esc(String(nextPred.pred.pWin))} %</strong> de victoire${nextPred.pred.expScore ? " (score probable " + esc(String(nextPred.pred.expScore)) + ")" : ""}</p>` : ""}
+      <div class="mt-4 flex flex-wrap gap-3">
+        <a href="${esc(SITE_URL)}" class="bg-lynx-red hover:opacity-90 text-white font-bold px-4 py-2 rounded-xl text-sm">Ouvrir le site</a>
+        ${tktNext ? `<a href="${esc(tktNext.url)}" class="border border-gray-600 hover:border-white px-4 py-2 rounded-xl text-sm font-semibold">🎟️ Réserver mes places</a>` : ""}
+        <a href="${esc(FEED_URL)}actus.html" class="border border-gray-600 hover:border-white px-4 py-2 rounded-xl text-sm font-semibold">Toutes les actus</a>
+      </div>
+    </section>`;
+  }
+  let formeSec = "";
+  if (lastM || forme.length) {
+    formeSec = `<section class="${card} scroll-mt-20" id="forme">
+      ${secH("📉", "Forme")}
+      ${lastM ? `<p class="mb-3 text-lg font-bold">Dernier match : ${esc(lastM.homeTeam)} <span class="text-lynx-red">${esc(String(lastM.scoreHome))}-${esc(String(lastM.scoreAway))}</span> ${esc(lastM.awayTeam)}${lastM.isProl ? ' <span class="text-xs text-gray-400">(après prolongation)</span>' : ""}</p>` : ""}
+      ${forme.length ? `<div class="flex flex-wrap gap-2 mb-3">${forme.map(f => `<span class="inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-white text-sm" style="background:${f.r === "V" ? "#10b981" : f.r === "D" ? "#ef4444" : "#9ca3af"}" title="${esc(f.opp)} ${f.my}-${f.op}">${f.r}</span>`).join("")}</div>` : ""}
+      ${played.length ? `<p class="text-sm text-gray-400">Bilan : <strong class="text-gray-100">${bilan.v} V · ${bilan.n} N · ${bilan.d} D</strong> en ${played.length} match(s)</p>` : ""}
+    </section>`;
+  }
+  let rankSec = "";
+  if (rrows.length && idx >= 0) {
+    rankSec = `<section class="${card} scroll-mt-20" id="classement">
+      ${secH("🏆", "Classement" + (poule ? " — poule " + esc(poule) : ""))}
+      <table class="w-full text-sm"><thead><tr class="text-xs uppercase text-gray-500"><th class="px-2 py-1 text-left">#</th><th class="px-2 py-1 text-left">Équipe</th><th class="px-2 py-1 text-right">Pts</th><th class="px-2 py-1 text-right">Diff</th></tr></thead><tbody>
+      ${rrows.map((r, i) => { const lx = /valence/i.test(r.team || ""); const bp = Number(r.bp), bc = Number(r.bc); const diff = isFinite(bp) && isFinite(bc) ? bp - bc : null; return `<tr class="${lx ? "bg-lynx-red/10" : ""} border-t border-gray-800"><td class="px-2 py-1.5 text-gray-500">${i + 1}${i !== idx && Math.abs(i - idx) <= 2 ? " ⚔️" : ""}</td><td class="px-2 py-1.5 font-semibold ${lx ? "text-lynx-red" : ""}">${esc(r.team)}${lx ? " 🦁" : ""}</td><td class="px-2 py-1.5 text-right font-black">${esc(String(Number(r.pts) || 0))}</td><td class="px-2 py-1.5 text-right text-gray-400">${diff === null ? "—" : (diff > 0 ? "+" : "") + diff}</td></tr>`; }).join("")}
+      </tbody></table>
+    </section>`;
+  }
+  let statsSec = "";
+  if (topPts.length || st || topGk) {
+    statsSec = `<section class="${card} scroll-mt-20" id="stats">
+      ${secH("⚡", "Stats Lynx")}
+      ${topPts.length ? `<p class="text-xs uppercase text-gray-500 font-bold mb-1">Top pointeurs${played.length ? " (ratio pts / match d'équipe)" : ""}</p>` + topPts.map(p => `<div class="flex justify-between items-center py-1.5 border-b border-gray-800 last:border-0"><span class="font-semibold">${esc(p.name)}</span><span class="text-sm text-gray-400">${p.pts} pts <span class="text-gray-500">(${p.g} B + ${p.a} A)</span>${played.length ? ` · <strong class="text-lynx-red">${(p.pts / played.length).toFixed(2).replace(".", ",")}/match</strong>` : ""}</span></div>`).join("") : ""}
+      ${st ? `<p class="mt-3 text-sm">Spécial teams (matchs suivis en direct) : sup. num. <strong>${st.ppPct == null ? "—" : st.ppPct + "%"}</strong> (${st.ppG}/${st.ppC}) · inf. num. <strong>${st.pkPct == null ? "—" : st.pkPct + "%"}</strong> · <strong>${st.shG}</strong> but(s) en infériorité</p>` : ""}
+      ${topGk ? `<p class="mt-2 text-sm text-gray-400">Gardien n°1 : <strong class="text-gray-100">${esc(topGk.name)}</strong> — ${esc(topGk.pct.toFixed(2).replace(".", ","))} % d'arrêts, ${Number(topGk.blan) || 0} blanchissage(s)</p>` : ""}
+    </section>`;
+  }
+  let pronoSec = "";
+  if (preds.length || nextPred) {
+    pronoSec = `<section class="${card} scroll-mt-20" id="pronos">
+      ${secH("🔮", "Pronostics du site")}
+      ${preds.length ? `<p class="mb-3 text-sm">Bilan public : <strong class="text-gray-100">${pOk} pronostic(s) vérifié(s) sur ${preds.length}</strong>${pPct != null ? ` (${pPct} % de réussite)` : ""}</p>
+      <div class="space-y-2">${preds.slice(0, 3).map(p => `<div class="text-sm flex justify-between gap-2 border-b border-gray-800 pb-1.5"><span>${p.hit ? "✅" : "❌"} vs ${esc(p.opp)} <span class="text-gray-500">— prédit ${esc(String(p.pWin))} %${p.exp ? " (" + esc(p.exp) + ")" : ""}</span></span><strong>${p.my}-${p.op}</strong></div>`).join("")}</div>` : `<p class="text-sm text-gray-400">Les pronostics de l'app seront vérifiés ici au fil des résultats.</p>`}
+    </section>`;
+  }
+  let upSec = "";
+  if (upcoming.length > 1) {
+    upSec = `<section class="${card} md:col-span-2 scroll-mt-20" id="cal">
+      ${secH("📅", "Prochains matchs")}
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">${upcoming.slice(0, 6).map(m => { const ih = /valence/i.test(m.homeTeam || ""); const opp = ih ? m.awayTeam : m.homeTeam; return `<div class="bg-gray-950/60 rounded-xl px-3 py-2 text-sm"><span class="text-gray-400">${esc(jourFr(m.date))}</span> · ${heure(m.date)}<br><strong>${esc(opp)}</strong> <span class="text-xs text-gray-500">${ih ? "domicile" : "extérieur"}</span></div>`; }).join("")}</div>
+    </section>`;
+  }
+  const actus = (Array.isArray(news) ? news : []).filter(n => n && n.title && n.date).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
+  let actusSec = "";
+  if (actus.length) {
+    const badge = (n) => { const nid = String(n.id || ""), k = String(n.kind || ""); if (k === "stats") return "📈"; if (nid.startsWith("auto_result_")) return "📊"; if (nid.startsWith("auto_preview_")) return "🔮"; if (k === "recap" || nid.startsWith("auto_recap")) return "📅"; return "📰"; };
+    actusSec = `<section class="${card} md:col-span-2 scroll-mt-20" id="actus">
+      ${secH("🗞️", "Dernières actus")}
+      <div class="space-y-2">${actus.map(n => { const d = new Date(n.date); const dt = isNaN(d) ? "" : d.toLocaleDateString("fr-FR", { timeZone: TZ, day: "numeric", month: "short" }); return `<a href="${esc(FEED_URL)}actus.html#lynx-${esc(String(n.id || hashId(n.title)))}" class="block bg-gray-950/60 rounded-xl px-3 py-2 border border-transparent hover:border-gray-600"><span class="text-xs text-gray-500">${dt} · ${badge(n)}</span> ${esc(n.title)}</a>`; }).join("")}</div>
+      <p class="mt-3 text-sm"><a class="text-lynx-red font-semibold" href="${esc(FEED_URL)}actus.html">Tout lire →</a></p>
+    </section>`;
+  }
+  const html = `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🦁 Lynx de Valence — le récap</title>
+<meta name="description" content="Prochain match, résultats, forme, classement, stats et pronostics vérifiés des Lynx de Valence de hockey — mis à jour automatiquement.">
+<meta property="og:title" content="Lynx de Valence — le récap">
+<meta property="og:description" content="Prochain match, résultats, forme, classement, stats et actus des Lynx de Valence.">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config = { theme: { extend: { colors: { "lynx-red": "#D90429" } } } };</script>
+</head><body class="bg-gray-950 text-gray-100 min-h-screen">
+<header class="sticky top-0 z-20 bg-gray-950/90 backdrop-blur border-b border-gray-800">
+  <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
+    <span class="font-black text-lg">🦁 <span class="text-lynx-red">Lynx</span> de Valence</span>
+    <nav class="ml-auto flex gap-3 text-xs text-gray-400 overflow-x-auto whitespace-nowrap">
+      <a class="hover:text-white" href="#match">Match</a><a class="hover:text-white" href="#forme">Forme</a><a class="hover:text-white" href="#classement">Classement</a><a class="hover:text-white" href="#stats">Stats</a><a class="hover:text-white" href="#pronos">Pronos</a><a class="hover:text-white" href="#cal">Calendrier</a><a class="hover:text-white" href="#actus">Actus</a>
+    </nav>
+  </div>
+</header>
+<main class="max-w-5xl mx-auto px-4 py-6 grid md:grid-cols-2 gap-5 pb-10">
+${hero || `<section class="${card} md:col-span-2"><p class="text-gray-400">Le calendrier de la saison n'est pas encore disponible — il s'importera automatiquement depuis l'app.</p></section>`}
+${formeSec}${rankSec}${statsSec}${pronoSec}${upSec}${actusSec}
+</main>
+<footer class="border-t border-gray-800 py-6 text-center text-xs text-gray-500">
+  <p><a class="text-gray-300 hover:text-white" href="${esc(SITE_URL)}">L'app complète 🦁</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}feed.xml">Flux RSS</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}actus.html">Toutes les actus</a></p>
+  <p class="mt-2">Page générée automatiquement (environ une fois par heure) à partir des données du site.</p>
+</footer>
+</body></html>`;
+  await fs.writeFile("index.html", html, "utf8");
+  console.log(`index.html régénéré (récap public : ${played.length} match(s) joué(s), ${upcoming.length} à venir${st ? ", spécial teams" : ""}).`);
 }
 
 // Les matchs importés (FFHG/CSV) ou saisis avant la mise à jour n'ont pas d'heure → minuit.
@@ -721,6 +861,8 @@ async function main() {
     // 4) FLUX RSS ENRICHI (articles IA + presse filtrée + résultats + stats + classement)
     const extItems = [...existingExt, ...collect.fresh];
     const feedCount = await buildFeed(news, extItems, autoItems, tkt.future);
+    // 4ter) PAGE RÉCAP PUBLIQUE (index.html servie par GitHub Pages à la racine du dépôt) — vitrine simple, mêmes données vérifiées
+    try { await buildHomePage(matches, roster, leaguePlayers, goalies, rankings, liveReports, news, tkt.future, activeSeason); } catch (e) { console.warn("Page récap : " + (e && e.message ? e.message : e)); }
     // 4bis) STATS DE LA SEMAINE → aussi en article du site (badge 📈, un doc par semaine) : ce qui est dans le flux public est visible dans Actus
     if (statsItem) { try { await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
     // 5) PUSH « NOUVEL ARTICLE » (selon les préférences de chaque appareil ; non bloquant)
