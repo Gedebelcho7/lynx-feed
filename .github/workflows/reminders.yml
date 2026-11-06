@@ -23,4 +23,5 @@ jobs:
           git config user.email "lynxbot@users.noreply.github.com"
           git add feed.xml actus.html
           if [ -f index.html ]; then git add index.html; fi
+          if ls backup-*.json >/dev/null 2>&1; then git add backup-*.json; fi
           git diff --cached --quiet || (git commit -m "Flux RSS + actus + récap mis à jour" && git push)
