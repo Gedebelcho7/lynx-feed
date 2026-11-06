@@ -502,6 +502,17 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
     addDuel("Buts marqués par match", (lynxRow.mj ? lynxRow.bp / lynxRow.mj : null), (oppRow.mj ? oppRow.bp / oppRow.mj : null), false, f2);
     addDuel("Victoires sur les 5 derniers matchs", forme.filter(f => f.r === "V").length, oppForme.filter(f => f.r === "V").length, false);
     addDuel("Victoires (saison)", (lynxRow.v || 0) + (lynxRow.vp || 0), (oppRow.v || 0) + (oppRow.vp || 0), false);
+    const lynxTeamN = lynxRow ? lynxRow.team : "Valence";
+    const h2hOf = (list) => { let lv = 0, ov = 0, dr = 0, lb = 0, ob = 0; list.forEach(m => { const ih = sameName(m.homeTeam, lynxTeamN); const my = ih ? Number(m.scoreHome) : Number(m.scoreAway); const op = ih ? Number(m.scoreAway) : Number(m.scoreHome); lb += my; ob += op; if (my > op) lv++; else if (op > my) ov++; else dr++; }); return { lv, ov, dr, lb, ob, n: list.length }; };
+    const h2hAllM = matches.filter(m => isFinished(m) && ((sameName(m.homeTeam, lynxTeamN) && sameName(m.awayTeam, oppName)) || (sameName(m.awayTeam, lynxTeamN) && sameName(m.homeTeam, oppName))));
+    const h2hS = h2hOf(h2hAllM.filter(m => m.season === activeSeason));
+    const h2hT = h2hOf(h2hAllM);
+    const h2hLbl = (s, periode) => "Victoires en confrontation directe — " + periode + (s.n ? " (" + s.n + " match" + (s.n > 1 ? "s" : "") + (s.dr ? ", " + s.dr + " nul(s)" : "") + ")" : " (pas encore joué)");
+    const h2hGLbl = (periode) => "Buts en confrontation directe — " + periode + (periode === "cette saison" ? (h2hS.n ? "" : " (pas encore joué)") : (h2hT.n ? "" : " (jamais joué)"));
+    addDuel(h2hLbl(h2hS, "cette saison"), h2hS.lv, h2hS.ov, false);
+    addDuel(h2hGLbl("cette saison"), h2hS.lb, h2hS.ob, false);
+    addDuel(h2hLbl(h2hT, "toutes saisons"), h2hT.lv, h2hT.ov, false);
+    addDuel(h2hGLbl("toutes saisons"), h2hT.lb, h2hT.ob, false);
     addDuel("Joueurs dans le top pointeurs de la ligue", lpCount(lynxRow.team), lpCount(oppName), false);
   }
   // Pronostics du modèle (mêmes poids que l'app) : prochain match + toute sa journée
