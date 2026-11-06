@@ -9,8 +9,8 @@ const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
-const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
-const KIT_VERSION = "2.16"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
+const FEED_URL = "https://GEDEBELCHO7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
+const KIT_VERSION = "2.17"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -200,7 +200,7 @@ function buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveR
   const topLeague = leaguePlayers.filter(p => p.season === activeSeason).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0))[0];
   const rs = (Array.isArray(rankings) ? rankings : []).filter(r => r && (!r.season || String(r.season) === String(activeSeason)) && r.team);
   const poule = ["A", "B"].find(p => rs.some(r => (r.poule || "A") === p && /valence/i.test(r.team || "")));
-  const rows = poule ? rs.filter(r => (r.poule || "A") === poule).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0)) : [];
+  const rows = poule ? sortRankFFHG(rs.filter(r => (r.poule || "A") === poule), matches, activeSeason) : [];
   const idx = rows.findIndex(r => /valence/i.test(r.team || ""));
   const lastM = played[played.length - 1];
   const next = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m) && String(dayKey(m.date)) >= dayKey(new Date())).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
@@ -247,10 +247,10 @@ function buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveR
   return { title: "📊 Stats Lynx de la semaine", description: lines.join(" "), date: d.toISOString(), guid: `stats-${activeSeason}-${d.getUTCFullYear()}-w${week}`, category: "Stats" };
 }
 // Évolution du classement : compare la place des Lynx au run précédent
-function buildRankItem(rankings, activeSeason, state) {
+function buildRankItem(rankings, matches, activeSeason, state) {
   const rs = (Array.isArray(rankings) ? rankings : []).filter(r => r && (!r.season || String(r.season) === String(activeSeason)) && r.team);
   for (const poule of ["A", "B"]) {
-    const rows = rs.filter(r => (r.poule || "A") === poule).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0));
+    const rows = sortRankFFHG(rs.filter(r => (r.poule || "A") === poule), matches, activeSeason);
     const idx = rows.findIndex(r => /valence/i.test(r.team || ""));
     if (idx >= 0) {
       const pos = idx + 1;
@@ -391,6 +391,48 @@ function liveRankingOf(matches, activeSeason) {
   return Object.values(teams);
 }
 
+// v2.17 : TRI OFFICIEL FFHG en cas d'égalité de points — 1) points pris en confrontations directes,
+// 2) différence de buts en confrontations directes, 3) différence de buts générale,
+// 4) quotient général (buts marqués / buts reçus), 5) meilleure attaque. (Règlement D2 FFHG)
+// extraMatches (optionnel) : matchs hypothétiques à intégrer aux confrontations directes (ex. scénarios de journée).
+// Utilisé partout (page récap, scénarios, articles stats/rang) → plus jamais de « 4e » dans un article et « 5e » sur le site.
+function sortRankFFHG(rows, matches, activeSeason, extraMatches) {
+  const pool = (Array.isArray(matches) ? matches : []).filter(m => m && m.season === activeSeason && isFinished(m) && (!m.type || String(m.type) === "Saison"));
+  const extras = Array.isArray(extraMatches) ? extraMatches.filter(m => m && m.homeTeam && m.awayTeam && isFinite(Number(m.scoreHome)) && isFinite(Number(m.scoreAway))) : [];
+  const cache = {};
+  const h2h = (A, B) => {
+    const k = [normalize(A), normalize(B)].sort().join("|");
+    if (!(k in cache)) {
+      let pa = 0, pb = 0, da = 0, db = 0;
+      for (const m of [...pool, ...extras]) {
+        const ihA = normalize(m.homeTeam) === normalize(A), iaA = normalize(m.awayTeam) === normalize(A);
+        const ihB = normalize(m.homeTeam) === normalize(B), iaB = normalize(m.awayTeam) === normalize(B);
+        if (!((ihA || iaA) && (ihB || iaB))) continue;
+        const sa = ihA ? Number(m.scoreHome) : Number(m.scoreAway), sb = ihB ? Number(m.scoreHome) : Number(m.scoreAway);
+        if (sa === sb) { pa += 1; pb += 1; }
+        else if (sa > sb) { pa += m.isProl ? 2 : 3; pb += m.isProl ? 1 : 0; }
+        else { pb += m.isProl ? 2 : 3; pa += m.isProl ? 1 : 0; }
+        da += sa - sb; db += sb - sa;
+      }
+      cache[k] = { pa, pb, da, db };
+    }
+    return cache[k];
+  };
+  return [...(rows || [])].sort((a, b) => {
+    const dP = (Number(b.pts) || 0) - (Number(a.pts) || 0);
+    if (dP) return dP;
+    const h = h2h(a.team, b.team);
+    if (h.pa !== h.pb) return h.pb - h.pa;
+    if (h.da !== h.db) return h.db - h.da;
+    const dA = (Number(a.bp) || 0) - (Number(a.bc) || 0), dB = (Number(b.bp) || 0) - (Number(b.bc) || 0);
+    if (dA !== dB) return dB - dA;
+    const qA = (Number(a.bc) || 0) > 0 ? (Number(a.bp) || 0) / Number(a.bc) : (Number(a.bp) || 0) > 0 ? Infinity : 0;
+    const qB = (Number(b.bc) || 0) > 0 ? (Number(b.bp) || 0) / Number(b.bc) : (Number(b.bp) || 0) > 0 ? Infinity : 0;
+    if (qA !== qB) return qB - qA;
+    return (Number(b.bp) || 0) - (Number(a.bp) || 0);
+  });
+}
+
 // v2.16 : MOTEUR DE PRÉDICTION — porté de l'app (Poisson + forme + dom/ext, mêmes poids) → mêmes pronostics que l'onglet Prévisions
 function matchPoints(scoreFor, scoreAgainst, isProl) {
   if (scoreFor > scoreAgainst) return isProl ? 2 : 3;
@@ -457,7 +499,7 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   played.forEach(m => { const [my, op] = scoreOf(m); if (my > op) bilan.v++; else if (my < op) bilan.d++; else bilan.n++; });
   const rs = (Array.isArray(rankings) ? rankings : []).filter(r => r && (!r.season || String(r.season) === String(activeSeason)) && r.team);
   const poule = ["A", "B"].find(p => rs.some(r => (r.poule || "A") === p && /valence/i.test(r.team || "")));
-  const rrows = poule ? rs.filter(r => (r.poule || "A") === poule).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0)) : [];
+  const rrows = poule ? sortRankFFHG(rs.filter(r => (r.poule || "A") === poule), matches, activeSeason) : [];
   const idx = rrows.findIndex(r => /valence/i.test(r.team || ""));
   const st = specialTeamsOf(liveReports, activeSeason);
   const topPts = roster.filter(p => p.season === activeSeason).map(p => ({ name: p.name, g: Number(p.goals) || 0, a: Number(p.assists) || 0 })).map(p => ({ name: p.name, g: p.g, a: p.a, pts: p.g + p.a })).filter(p => p.pts > 0).sort((a, b) => b.pts - a.pts || b.g - a.g).slice(0, 5);
@@ -554,6 +596,49 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   const heure = (iso) => { const h = new Date(iso).toLocaleTimeString("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }); return h === "00:00" ? "~20h00" : h; };
   const card = "bg-gray-900/80 border border-gray-800 rounded-2xl p-5";
   const secH = (icon, txt) => `<h2 class="font-black text-xl mb-3"><span class="text-lynx-red">${icon}</span> ${txt}</h2>`;
+  // 🔴 v2.17 : score live sur la page publique — le navigateur lit settings/live-state (API REST Firestore)
+  // puis le flux live FFHG (poll 60 s) : score et dernier but en direct pour tout le monde,
+  // sans commit GitHub ni déploiement supplémentaire. La page s'auto-désactive hors match.
+  let liveScript = "";
+  if (next) {
+    const lsH = esc(next.homeTeam || "Domicile"), lsA = esc(next.awayTeam || "Visiteur");
+    liveScript = `
+<script>
+(function(){
+  var el = document.getElementById('live-score'); if (!el) return;
+  var PM = '${PROJECT}', PK = '${API_KEY}', PB = '${BASE_PATH}';
+  var t0 = Date.now();
+  function nmc(o){ return (o && (o.nom_complet || ((o.prenom || '') + ' ' + (o.nom || '')).trim())) || ''; }
+  function walk(o, f){ if (!o || typeof o !== 'object') return; if (Array.isArray(o)) { for (var i = 0; i < o.length; i++) walk(o[i], f); return; } f(o); for (var k in o) { if (k !== 'equipe' && k !== 'tireur' && k !== 'joueur') walk(o[k], f); } }
+  function onFlux(txt){
+    var j = null; try { j = JSON.parse(txt); } catch (e) { return; }
+    if (!j || !Array.isArray(j.scores)) return;
+    var names = {}, goals = [];
+    walk(j, function(o){
+      if (o && o.equipe && o.equipe.id != null) { var lb = o.equipe.libelle_court || o.equipe.libelle || ''; if (lb) names[o.equipe.id] = lb; }
+      if (o && o.type === 'BUT') goals.push({ t: o.temps || 0, who: nmc(o.tireur || o.joueur || o.personne || o.buteur), tid: o.equipe ? o.equipe.id : null });
+    });
+    var s0 = j.scores[0] || {}, s1 = j.scores[1] || {};
+    var n0 = names[s0.equipe_id] || '${lsH}', n1 = names[s1.equipe_id] || '${lsA}';
+    var html = (j.est_terminee ? '🏁 Terminé : ' : '🔴 EN DIRECT : ') + n0 + ' <strong>' + (s0.score || 0) + ' - ' + (s1.score || 0) + '</strong> ' + n1;
+    if (goals.length) { var g = goals[goals.length - 1]; var mn = Math.floor(g.t / 60), se = g.t % 60; var gn = (g.tid != null && names[g.tid]) || ''; html += '<br><span class="text-xs text-gray-300">Dernier but : ' + g.who + (gn ? ' (' + gn + ')' : '') + ' à ' + mn + ':' + (se < 10 ? '0' : '') + se + '</span>'; }
+    el.innerHTML = html;
+    el.classList.remove('hidden');
+    if (j.est_terminee) clearInterval(iv);
+  }
+  function tick(){
+    fetch('https://firestore.googleapis.com/v1/projects/' + PM + '/databases/(default)/documents/' + PB + '/settings/live-state?key=' + PK).then(function(r){ return r.json(); }).then(function(d){
+      var f = (d && d.fields) || {};
+      var mid = f.matchId && f.matchId.stringValue;
+      var end = f.notifiedEnd && f.notifiedEnd.booleanValue;
+      if (!mid || end) { if (Date.now() - t0 > 6 * 3600e3) clearInterval(iv); return; }
+      return fetch('https://www.hockeyfrance.com/competitions/wp-admin/admin-ajax.php?action=live_rencontre_maj&rencontre_id=' + mid).then(function(r){ return r.text(); }).then(onFlux);
+    }).catch(function(){});
+  }
+  tick(); var iv = setInterval(tick, 60000);
+})();
+</script>`;
+  }
   let hero = "";
   if (next) {
     const isHome = /valence/i.test(next.homeTeam || "");
@@ -564,6 +649,7 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
       <p class="text-2xl md:text-3xl font-black">🦁 Lynx de Valence <span class="text-lynx-red">vs</span> ${esc(opp)}</p>
       <p class="mt-2 text-gray-300">${esc(jourFr(next.date))} · <strong>${heure(next.date)}</strong> · ${isHome ? "domicile" : "extérieur"}${(next.patinoire || next.venue) ? " · " + esc(next.patinoire || next.venue) : ""}</p>
       ${(nextPred2 || nextPred) ? `<p class="mt-2 text-sm inline-block bg-gray-950/60 rounded-full px-3 py-1">🔮 ${nextPred2 ? `Le modèle du site donne <strong>${String(lynxPct)} %</strong> de victoire aux Lynx (score probable <strong>${heroScore}</strong>)${otRisk}` : `Le site prédit <strong>${esc(String(nextPred.pred.pWin))} %</strong> de victoire${nextPred.pred.expScore ? " (score probable " + esc(String(nextPred.pred.expScore)) + ")" : ""}`}</p>` : ""}
+      <p id="live-score" class="mt-2 text-lg font-black hidden"></p>
       <div class="mt-4 flex flex-wrap gap-3">
         <a href="${esc(SITE_URL)}" class="bg-lynx-red hover:opacity-90 text-white font-bold px-4 py-2 rounded-xl text-sm">Ouvrir le site</a>
         ${tktNext ? `<a href="${esc(tktNext.url)}" class="border border-gray-600 hover:border-white px-4 py-2 rounded-xl text-sm font-semibold">🎟️ Réserver mes places</a>` : ""}
@@ -673,8 +759,11 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
       if (lrow) { lrow.pts += sc.pL; lrow.bp += lynxHome ? hs : as; lrow.bc += lynxHome ? as : hs; }
       const orow = rows.find(r => normalize(r.team) === okk);
       if (orow) { orow.pts += sc.pO; orow.bp += lynxHome ? as : hs; orow.bc += lynxHome ? hs : as; }
-      rows.sort((a, b) => b.pts - a.pts || (b.bp - b.bc) - (a.bp - a.bc) || b.bp - a.bp);
-      return rows;
+      // v2.17 : tri FFHG (confrontations directes d'abord) — les matchs prédits de la journée + le scénario simulé comptent dans les h2h
+      const simExtras = journeePreds.filter(j => !j.done && j.hs !== null && !(/valence/i.test(j.m.homeTeam || "") || /valence/i.test(j.m.awayTeam || ""))).map(j => ({ homeTeam: j.m.homeTeam, awayTeam: j.m.awayTeam, scoreHome: j.hs, scoreAway: j.as, isProl: false, season: activeSeason, type: "Saison" }));
+      simExtras.push({ homeTeam: lynxHome ? (lrow ? lrow.team : "Lynx de Valence") : (orow ? orow.team : oppName), awayTeam: lynxHome ? (orow ? orow.team : oppName) : (lrow ? lrow.team : "Lynx de Valence"), scoreHome: lynxHome ? hs : as, scoreAway: lynxHome ? as : hs, isProl: sc.k === "VP" || sc.k === "DP", season: activeSeason, type: "Saison" });
+      const sortedRows = sortRankFFHG(rows, matches, activeSeason, simExtras);
+      return sortedRows;
     };
     const scenTable = (sc) => {
       const rows = scenario(sc);
@@ -739,6 +828,7 @@ ${formeSec}${advSec}${rankSec}${statsSec}${joueursSec}${pronoSec}${duelSec}${jou
   <p><a class="text-gray-300 hover:text-white" href="${esc(SITE_URL)}">L'app complète 🦁</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}feed.xml">Flux RSS</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}actus.html">Toutes les actus</a></p>
   <p class="mt-2">Page générée automatiquement (environ une fois par heure) à partir des données du site.</p>
 </footer>
+${liveScript}
 </body></html>`;
   await fs.writeFile("index.html", html, "utf8");
   console.log(`index.html régénéré (récap public : ${played.length} match(s) joué(s), ${upcoming.length} à venir${st ? ", spécial teams" : ""}${oppName ? ", face-à-face " + oppName : ""}${lpTop.length ? ", top pointeurs ligue" : ""}${journeePreds.length ? ", journée " + (nextJ || "") + " projetée" : ""}).`);
@@ -843,7 +933,7 @@ async function goalAlerts(settings, subs, matches) {
     if (!mid) return;
     console.log("Alertes live : match de Valence détecté automatiquement (n° " + mid + ").");
   }
-  if (!state || state.matchId !== mid) state = { matchId: mid, seenGoals: "", notifiedStart: false, notifiedEnd: false };
+  if (!state || state.matchId !== mid) state = { matchId: mid, seenGoals: "", notifiedStart: false, notifiedEnd: false, periodsSeen: 0 };
   if (state.notifiedEnd) return; // match terminé → plus rien à faire jusqu'au prochain match
   const raw = await ffhgLive(mid);
   let data = null;
@@ -873,6 +963,21 @@ async function goalAlerts(settings, subs, matches) {
     const nom = actor.nom_complet || ((actor.prenom || "") + " " + (actor.nom || "")).trim();
     pushes.push({ title: mine ? "🚨 BUUUT Lynx !" : "😬 But pour " + (gTeam || "l'adversaire"),
       body: `${homeName} ${hs} - ${as} ${awayName}` + (nom ? ` — ${nom}` : ""), tag: `goal_${g.id}` });
+  }
+  // 🕐 v2.17 : fin de tiers — push discret à chaque pause (20/40/60 min de jeu cumulées du flux),
+  // envoyé dès que le match a commencé (au plus 5 min après la vraie pause). Préférence 🚨 buts, comme le reste du live.
+  if (!data.est_terminee) {
+    const maxT = evts.reduce((mx, ev) => Math.max(mx, Number(ev.temps) || 0), 0);
+    const chrono = Math.floor((Number(data.chronometre && data.chronometre.milisecondes_total) || 0) / 1000);
+    const cur = Math.max(maxT, chrono);
+    const tiers = [["Fin du 1er tiers", 1200], ["Fin du 2e tiers", 2400], ["Fin du 3e tiers (temps réglementaire)", 3600]];
+    let seenP = Number(state.periodsSeen) || 0;
+    for (let pi = seenP; pi < tiers.length; pi++) {
+      if (cur < tiers[pi][1] || !state.notifiedStart) break;
+      pushes.push({ title: "🕐 " + tiers[pi][0], body: `${homeName} ${hs} - ${as} ${awayName}`, tag: `tier${pi + 1}_${mid}` });
+      seenP = pi + 1;
+    }
+    state.periodsSeen = seenP;
   }
   if (data.est_terminee && !state.notifiedEnd) {
     state.notifiedEnd = true;
@@ -910,27 +1015,43 @@ async function goalAlerts(settings, subs, matches) {
 }
 
 // Pousse les NOUVEAUX articles du site (résultats, pronostics, articles IA) aux abonnés.
-// Max 3 par cycle ; état dans settings/articles-state (date du dernier article poussé).
+// v2.17 : appelé à CHAQUE run (5 min) → une notif part dans les ~5 min suivant la publication.
+// Garde-fous : articles de plus de 7 jours jamais poussés (évitons les vieux articles re-datés) ;
+// plus de 3 nouveaux d'un coup → UNE seule notif récap (fini la rafale de notifs de vieux matchs publiés en retard) ;
+// lastDate avance au plus récent de TOUS les articles vus (le plus récent ne peut plus être sauté par le slice).
+// État dans settings/articles-state (date du dernier article poussé).
 async function articlePush(news, subs) {
   const targets = subs.filter(s => !s.prefs || s.prefs.articles !== false);
   if (!targets.length || !VAPID_PRIVATE_KEY) return;
   const state = await getDoc("settings", "articles-state");
   const lastDate = Number(state && state.lastDate) || 0;
+  const now = Date.now();
   const sorted = news.filter(n => n.title && n.date).sort((a, b) => new Date(a.date) - new Date(b.date));
-  const fresh = sorted.filter(n => new Date(n.date).getTime() > lastDate).slice(-3);
+  const fresh = sorted.filter(n => { const t = new Date(n.date).getTime(); return t > lastDate && now - t < 7 * 24 * 3600e3; });
   if (!fresh.length) return;
   const webpush = (await import("web-push")).default;
   webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-  for (const n of fresh) {
-    const url = `${FEED_URL}actus.html#lynx-${n.id}`;
+  const send = async (title, body, url, tag) => {
     let ok = 0;
     for (const s of targets) {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "📰 Nouvel article Lynx", body: `${n.title} — clique pour le lire en entier.`, url, tag: `art_${hashId(String(n.id))}` }));
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title, body, url, tag }));
         ok++;
       } catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
     }
-    console.log(`Article poussé (« ${n.title} ») à ${ok} abonné(s).`);
+    return ok;
+  };
+  if (fresh.length > 3) {
+    // flotte d'articles d'un coup (ex. résultats confirmés en retard par la FFHG) → une seule notif récap, pas de spam
+    const body = fresh.slice(-5).map(n => "• " + n.title).join("\n") + (fresh.length > 5 ? "\n• …" : "");
+    const ok = await send("📰 " + fresh.length + " nouveaux articles Lynx", body, `${FEED_URL}actus.html`, `art_batch_${hashId(String(fresh[fresh.length - 1].id))}`);
+    console.log(`Récap de ${fresh.length} articles poussé à ${ok} abonné(s).`);
+  } else {
+    for (const n of fresh) {
+      const url = `${FEED_URL}actus.html#lynx-${n.id}`;
+      const ok = await send("📰 Nouvel article Lynx", `${n.title} — clique pour le lire en entier.`, url, `art_${hashId(String(n.id))}`);
+      console.log(`Article poussé (« ${n.title} ») à ${ok} abonné(s).`);
+    }
   }
   await patchDoc("settings", "articles-state", { lastDate: Math.max(...fresh.map(n => new Date(n.date).getTime())) });
 }
@@ -1085,47 +1206,69 @@ async function main() {
     }
   }
 
-  // 2) COLLECTE + FLUX : seulement toutes les ~50 minutes (l'action tourne désormais toutes les 5 min)
+  // 2) COLLECTE EXTERNE : seulement toutes les ~50 minutes (l'action tourne toutes les 5 min, les flux RSS/ticketing sont limités en interne)
+  // ⚠️ v2.17 : la page récap publique (index.html), actus.html, feed.xml et le push des NOUVEAUX articles sont vérifiés À CHAQUE run (5 min),
+  // même en cycle rapide — un article publié apparaît en ligne ET part en notif dans les ~5 min, fini le délai d'une heure.
   const rssCycle = await getDoc("settings", "rss-state");
   const lastCollect = Number(rssCycle && rssCycle.lastCollectAt) || 0;
-  if (now - lastCollect < 50 * 60e3) {
-    console.log("Cycle rapide : collecte RSS et régénération du flux sautées (dernière il y a moins de 50 min).");
-    try { await patchDoc("settings", "health", { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: "rapide (5 min)", subsCount: subs.length }); } catch (e) {}
+  const doCollect = now - lastCollect >= 50 * 60e3;
+  let collect = { fresh: [], newItems: [], failed: [] };
+  let tkt = { seen: 0, added: 0, future: [], at: new Date().toISOString() };
+  if (!doCollect) {
+    console.log("Cycle rapide : collecte RSS et billetterie sautées (dernière il y a moins de 50 min) — page récap, actus et push articles vérifiés quand même.");
   } else {
     try { await patchDoc("settings", "rss-state", { lastCollectAt: now }); } catch (e) { /* non bloquant */ }
-    const collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords, new Set((existingExt || []).map(d => String(d.id))));
+    collect = await collectExternalFeeds(settings.rssFeeds, settings.rssKeywords, new Set((existingExt || []).map(d => String(d.id))));
     console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app${collect.newItems.length ? " dont " + collect.newItems.length + " nouveau(x)" : ""}.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
     try { await actusPush(collect.newItems, subs); } catch (e) { console.warn("Push actus presse : " + (e && e.message ? e.message : e)); }
-    let tkt = { seen: 0, added: 0, future: [], at: new Date().toISOString() };
     try { tkt = await ticketCheck(subs); } catch (e) { console.warn("Billetterie : " + (e && e.message ? e.message : e)); }
-
-    // 3) ITEMS AUTO (templates sans IA)
-    const newsIds = new Set(news.map(n => String(n.id || "")));
-    const autoItems = [...buildResultItems(matches, newsIds, activeSeason)];
-    const statsItem = buildStatsItem(matches, roster, leaguePlayers, goalies, liveRank, liveReports, activeSeason);
-    if (statsItem) autoItems.push(statsItem);
-    const rankState = await getDoc("settings", "rssState");
-    const { item: rankItem, state: newRankState } = buildRankItem(liveRank, activeSeason, rankState || {});
-    if (rankItem) autoItems.push(rankItem);
-    if (newRankState && (!rankState || rankState.lynxRankPos !== newRankState.lynxRankPos || rankState.lynxRankPoule !== newRankState.lynxRankPoule)) {
-      await patchDoc("settings", "rssState", newRankState);
-    }
-
-    // 4) FLUX RSS ENRICHI (articles IA + presse filtrée + résultats + stats + classement)
-    const extItems = [...existingExt, ...collect.fresh];
-    const feedCount = await buildFeed(news, extItems, autoItems, tkt.future);
-    // 4ter) PAGE RÉCAP PUBLIQUE (index.html servie par GitHub Pages à la racine du dépôt) — vitrine simple, mêmes données vérifiées
-    try { await buildHomePage(matches, roster, leaguePlayers, goalies, liveRank, liveReports, news, tkt.future, activeSeason); } catch (e) { console.warn("Page récap : " + (e && e.message ? e.message : e)); }
-    // 4bis) STATS DE LA SEMAINE → aussi en article du site (badge 📈, un doc par semaine) : ce qui est dans le flux public est visible dans Actus
-    // ⚠️ la date reste celle de la PREMIÈRE publication de la semaine — la réécrire à chaque cycle faisait croire au push « nouvel article » que l'article était nouveau → re-notification ~toutes les heures
-    if (statsItem) { try { const exStats = (news || []).find(n => String(n.id || "") === String(statsItem.guid)); await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: exStats && exStats.date ? exStats.date : statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
-    // 5) PUSH « NOUVEL ARTICLE » (selon les préférences de chaque appareil ; non bloquant)
-    try { await articlePush(news, subs); } catch (e) { console.warn("Push articles : " + (e && e.message ? e.message : e)); }
-    // 6) DOC DE SANTÉ : ce que l'Admin → Diagnostic de l'affiche affiche
-    try {
-      await patchDoc("settings", "health", { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: "complet (RSS + billetterie)", subsCount: subs.length, rssCycleAt: new Date().toISOString(), extFresh: collect.fresh.length, feedsFailed: String((collect.failed || []).join(" ; ")).slice(0, 300), lastTicketCheckAt: tkt.at, billetterieSeen: tkt.seen, billetterieAdded: tkt.added, feedItems: feedCount });
-    } catch (e) { console.warn("health : " + (e && e.message ? e.message : e)); }
   }
+
+  // 3) ITEMS AUTO (templates sans IA)
+  const newsIds = new Set(news.map(n => String(n.id || "")));
+  const autoItems = [...buildResultItems(matches, newsIds, activeSeason)];
+  const statsItem = buildStatsItem(matches, roster, leaguePlayers, goalies, liveRank, liveReports, activeSeason);
+  if (statsItem) autoItems.push(statsItem);
+  const rankState = await getDoc("settings", "rssState");
+  const { item: rankItem, state: newRankState } = buildRankItem(liveRank, matches, activeSeason, rankState || {});
+  if (rankItem) autoItems.push(rankItem);
+  if (newRankState && (!rankState || rankState.lynxRankPos !== newRankState.lynxRankPos || rankState.lynxRankPoule !== newRankState.lynxRankPoule)) {
+    await patchDoc("settings", "rssState", newRankState);
+  }
+
+  // 4) FLUX RSS ENRICHI (articles IA + presse filtrée + résultats + stats + classement)
+  const extItems = [...existingExt, ...collect.fresh];
+  const feedCount = await buildFeed(news, extItems, autoItems, tkt.future);
+  // 4ter) PAGE RÉCAP PUBLIQUE (index.html servie par GitHub Pages à la racine du dépôt) — vitrine simple, mêmes données vérifiées
+  try { await buildHomePage(matches, roster, leaguePlayers, goalies, liveRank, liveReports, news, tkt.future, activeSeason); } catch (e) { console.warn("Page récap : " + (e && e.message ? e.message : e)); }
+  // 4quin) 💾 v2.17 : SAUVEGARDE AUTO MENSUELLE — export JSON des collections stables commité dans le dépôt lynx-feed
+  // (une fois par mois, au premier cycle complet du mois ; plan B gratuit en cas de pépin sur la base).
+  try {
+    const nowD = new Date();
+    const monthKey = nowD.getUTCFullYear() + "-" + String(nowD.getUTCMonth() + 1).padStart(2, "0");
+    const bstate = await getDoc("settings", "backup-state");
+    if (!bstate || String(bstate.month) !== monthKey) {
+      const fsb = await import("node:fs/promises");
+      const cols = ["calendar", "ranking", "players", "goalies", "league-players", "league-goalies", "news", "context", "live-reports"];
+      const backup = { month: monthKey, generatedAt: new Date().toISOString(), collections: {} };
+      for (const c of cols) backup.collections[c] = await getCol(c);
+      await fsb.writeFile("backup-" + monthKey + ".json", JSON.stringify(backup), "utf8");
+      await patchDoc("settings", "backup-state", { month: monthKey, at: new Date().toISOString() });
+      console.log("Sauvegarde mensuelle écrite : backup-" + monthKey + ".json (" + cols.length + " collections).");
+    }
+  } catch (e) { console.warn("Backup mensuel : " + (e && e.message ? e.message : e)); }
+  // 4bis) STATS DE LA SEMAINE → aussi en article du site (badge 📈, un doc par semaine) : ce qui est dans le flux public est visible dans Actus
+  // ⚠️ la date reste celle de la PREMIÈRE publication de la semaine — la réécrire à chaque cycle faisait croire au push « nouvel article » que l'article était nouveau → re-notification ~toutes les heures
+  // ⚠️ v2.17 : patch SEULEMENT si le contenu change (le bloc tourne désormais à chaque run, plus seulement en cycle complet)
+  if (statsItem) { try { const exStats = (news || []).find(n => String(n.id || "") === String(statsItem.guid)); if (!exStats || exStats.title !== statsItem.title || exStats.content !== statsItem.description) await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: exStats && exStats.date ? exStats.date : statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
+  // 5) PUSH « NOUVEL ARTICLE » (selon les préférences de chaque appareil ; non bloquant)
+  try { await articlePush(news, subs); } catch (e) { console.warn("Push articles : " + (e && e.message ? e.message : e)); }
+  // 6) DOC DE SANTÉ : ce que l'Admin → Diagnostic de l'affiche affiche (les champs RSS/billetterie ne sont écrasés qu'en cycle complet)
+  try {
+    const hFields = { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: doCollect ? "complet (RSS + billetterie)" : "rapide (page + articles)", subsCount: subs.length, feedItems: feedCount };
+    if (doCollect) Object.assign(hFields, { rssCycleAt: new Date().toISOString(), extFresh: collect.fresh.length, feedsFailed: String((collect.failed || []).join(" ; ")).slice(0, 300), lastTicketCheckAt: tkt.at, billetterieSeen: tkt.seen, billetterieAdded: tkt.added });
+    await patchDoc("settings", "health", hFields);
+  } catch (e) { console.warn("health : " + (e && e.message ? e.message : e)); }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
