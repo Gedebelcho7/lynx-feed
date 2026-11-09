@@ -12,7 +12,7 @@
     <meta property="og:site_name" content="Les Lynx de Valence">
     <meta property="og:title" content="Les Lynx de Valence — résultats, classement, pronostics et actus">
     <meta property="og:description" content="Résultats, classement, pronostics, matchs en direct et actus des Lynx de Valence (hockey sur glace).">
-    <meta property="og:image" content="https://lnx-data.netlify.app/logo-512.png">
+    <meta property="og:image" content="logo-512.png">
     <meta name="twitter:card" content="summary">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
@@ -341,11 +341,11 @@
                 </div>
 
                 <!-- Actus : à droite, même hauteur que la rangée matchs, liste déroulante à l'intérieur -->
-                <div id="home-news-container" class="lg:col-span-2 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-5 rounded-xl shadow-xl border border-gray-100/50 dark:border-gray-700/50 self-start">
-                    <div class="flex justify-between items-center mb-3 border-b-4 border-lynx-red pb-2">
-                        <h3 class="text-xl font-extrabold flex items-center"><i class="fa-solid fa-newspaper mr-2 text-lynx-red"></i> Actualités</h3>
+                <div id="home-news-container" class="lg:col-span-2 flex flex-col bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-5 rounded-xl shadow-xl border border-gray-100/50 dark:border-gray-700/50">
+                    <div class="flex justify-between items-center mb-2 border-b-4 border-lynx-red pb-2">
+                        <h3 class="text-lg font-extrabold flex items-center"><i class="fa-solid fa-newspaper mr-2 text-lynx-red"></i> Actualités</h3>
                     </div>
-                    <div id="news-list-content" class="space-y-3 max-h-[380px] lg:max-h-[430px] overflow-y-auto pr-1">
+                    <div id="news-list-content" class="flex-1 min-h-0 space-y-3 max-h-[420px] overflow-y-auto pr-1">
                          <div class="text-center text-sm text-gray-400 italic p-4">Chargement...</div>
                     </div>
                 </div>
@@ -1603,11 +1603,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
+        const mistralApiKey = "";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
