@@ -9,7 +9,7 @@ const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://lnx-data.netlify.app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
-const FEED_URL = "https://GEDEBELCHO7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
+const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
 const KIT_VERSION = "2.17"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
@@ -229,7 +229,7 @@ function buildStatsItem(matches, roster, leaguePlayers, goalies, rankings, liveR
   }
   if (next) lines.push(`Prochain match : ${next.homeTeam} vs ${next.awayTeam}, le ${jourFr(next.date)}.`);
   if (idx >= 0) {
-    lines.push(`Classement : ${idx + 1}${idx === 0 ? "er" : "e"} de la poule ${poule} avec ${rows[idx].pts} pts.`);
+    lines.push(`Classement : ${idx + 1}${idx === 0 ? "er" : "e"} du ${champLblKit(matches, activeSeason, poule)} avec ${rows[idx].pts} pts.`);
     const ahead = rows[idx - 1], behind = rows[idx + 1];
     if (ahead) { const gap = Number(ahead.pts) - Number(rows[idx].pts); lines.push(`Juste devant : ${ahead.team} (${ahead.pts} pts, ${gap === 1 ? "1 point" : gap + " points"} d'écart).`); }
     if (behind) { const gap = Number(rows[idx].pts) - Number(behind.pts); lines.push(`Juste derrière : ${behind.team} (${behind.pts} pts, ${gap === 1 ? "1 point" : gap + " points"} d'écart).`); }
@@ -259,7 +259,7 @@ function buildRankItem(rankings, matches, activeSeason, state) {
       if (prevPos && prevPos !== pos) {
         item = {
           title: `📈 Classement : les Lynx ${pos < prevPos ? "montent" : "reculent"} (${prevPos}ᵉ → ${pos}ᵉ place)`,
-          description: `Poule ${poule} : les Lynx de Valence passent de la ${prevPos}ᵉ à la ${pos}ᵉ place (${rows[idx].pts} pts). Classement complet sur le site.`,
+          description: `${seasonHasPoulesKit(matches, activeSeason) ? "Poule " + poule : "Championnat"} : les Lynx de Valence passent de la ${prevPos}ᵉ à la ${pos}ᵉ place (${rows[idx].pts} pts). Classement complet sur le site.`,
           date: new Date().toISOString(), guid: `rank-${activeSeason}-${poule}-${prevPos}-${pos}`, category: "Classement"
         };
       }
@@ -389,6 +389,15 @@ function liveRankingOf(matches, activeSeason) {
     else { h.n++; a.n++; }
   });
   return Object.values(teams);
+}
+
+// v2.17 : D1 = championnat unique (pas de poules) — le mot « poule » n'est utilisé que si la saison contient
+// réellement deux poules (des matchs étiquetés « A »). Sinon on parle de « championnat ».
+function seasonHasPoulesKit(matches, activeSeason) {
+  return (Array.isArray(matches) ? matches : []).some(m => m && m.season === activeSeason && String(m.poule || "").toUpperCase() === "A");
+}
+function champLblKit(matches, activeSeason, poule) {
+  return seasonHasPoulesKit(matches, activeSeason) ? `poule ${poule || "B"}` : "championnat";
 }
 
 // v2.17 : TRI OFFICIEL FFHG en cas d'égalité de points — 1) points pris en confrontations directes,
@@ -670,7 +679,7 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   if (next && oppName) {
     advSec = `<section class="${card} scroll-mt-20" id="adversaire">
       ${secH("🔵", "Prochain adversaire — " + esc(oppName))}
-      ${oppRow ? `<p class="mb-2 text-lg font-bold">${oppIdx + 1}${oppIdx === 0 ? "er" : "e"} de la poule ${esc(poule || "")} · ${esc(String(Number(oppRow.pts) || 0))} pts</p>` : ""}
+      ${oppRow ? `<p class="mb-2 text-lg font-bold">${oppIdx + 1}${oppIdx === 0 ? "er" : "e"} du ${esc(champLblKit(matches, activeSeason, poule))} · ${esc(String(Number(oppRow.pts) || 0))} pts</p>` : ""}
       ${oppForme.length ? `<div class="flex flex-wrap gap-2 mb-3">${oppForme.map(f => `<span class="inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-white text-sm" style="background:${f.r === "V" ? "#10b981" : f.r === "D" ? "#ef4444" : "#9ca3af"}" title="${esc(f.opp)} ${f.my}-${f.op}">${f.r}</span>`).join("")}</div>` : ""}
       ${oppForme.length ? `<p class="text-sm text-gray-400">Bilan ${esc(oppName)} : <strong class="text-gray-100">${oppBilan.v} V · ${oppBilan.n} N · ${oppBilan.d} D</strong> en ${oppBilan.v + oppBilan.n + oppBilan.d} match(s)</p>` : ""}
       <p class="mt-2 text-sm text-gray-400">${isHomeNext ? "Les Lynx reçoivent " + esc(oppName) : "Les Lynx se déplacent chez " + esc(oppName)} — ${esc(jourFr(next.date))} à ${heure(next.date)}.</p>
@@ -679,7 +688,7 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   let rankSec = "";
   if (rrows.length && idx >= 0) {
     rankSec = `<section class="${card} scroll-mt-20" id="classement">
-      ${secH("🏆", "Classement" + (poule ? " — poule " + esc(poule) : ""))}
+      ${secH("🏆", "Classement" + (seasonHasPoulesKit(matches, activeSeason) && poule ? " — poule " + esc(poule) : ""))}
       <table class="w-full text-sm"><thead><tr class="text-xs uppercase text-gray-500"><th class="px-2 py-1 text-left">#</th><th class="px-2 py-1 text-left">Équipe</th><th class="px-2 py-1 text-right">Pts</th><th class="px-2 py-1 text-right">Diff</th></tr></thead><tbody>
       ${rrows.map((r, i) => { const lx = /valence/i.test(r.team || ""); const isOpp = !!oppName && sameName(r.team, oppName); const bp = Number(r.bp), bc = Number(r.bc); const diff = isFinite(bp) && isFinite(bc) ? bp - bc : null; return `<tr class="${lx ? "bg-lynx-red/10" : isOpp ? "bg-blue-500/10" : ""} border-t border-gray-800"><td class="px-2 py-1.5 text-gray-500">${i + 1}${i !== idx && Math.abs(i - idx) <= 2 ? " ⚔️" : ""}</td><td class="px-2 py-1.5 font-semibold ${lx ? "text-lynx-red" : isOpp ? "text-blue-400" : ""}">${esc(r.team)}${lx ? " 🦁" : isOpp ? " 🔵" : ""}</td><td class="px-2 py-1.5 text-right font-black">${esc(String(Number(r.pts) || 0))}</td><td class="px-2 py-1.5 text-right text-gray-400">${diff === null ? "—" : (diff > 0 ? "+" : "") + diff}</td></tr>`; }).join("")}
       </tbody></table>
@@ -952,7 +961,7 @@ async function goalAlerts(settings, subs, matches) {
   const pushes = [];
   if (!state.notifiedStart && (goals.length > 0 || (data.chronometre && Number(data.chronometre.milisecondes_total) > 0))) {
     state.notifiedStart = true;
-    pushes.push({ title: "🥅 C'est parti !", body: `${homeName} - ${awayName} : le match Lynx est en cours !`, tag: `livestart_${mid}` });
+    pushes.push({ title: "🥅 C'est parti !", body: `${homeName} - ${awayName} : le match Lynx est en cours !`, tag: `livestart_${mid}`, kind: "goal" });
   }
   for (const g of goals) {
     if (seen.includes(g.id)) continue;
@@ -962,7 +971,7 @@ async function goalAlerts(settings, subs, matches) {
     const actor = g.tireur || g.joueur || g.personne || g.buteur || {};
     const nom = actor.nom_complet || ((actor.prenom || "") + " " + (actor.nom || "")).trim();
     pushes.push({ title: mine ? "🚨 BUUUT Lynx !" : "😬 But pour " + (gTeam || "l'adversaire"),
-      body: `${homeName} ${hs} - ${as} ${awayName}` + (nom ? ` — ${nom}` : ""), tag: `goal_${g.id}` });
+      body: `${homeName} ${hs} - ${as} ${awayName}` + (nom ? ` — ${nom}` : ""), tag: `goal_${g.id}`, kind: mine ? "goal" : "goal-opp" });
   }
   // 🕐 v2.17 : fin de tiers — push discret à chaque pause (20/40/60 min de jeu cumulées du flux),
   // envoyé dès que le match a commencé (au plus 5 min après la vraie pause). Préférence 🚨 buts, comme le reste du live.
@@ -974,7 +983,7 @@ async function goalAlerts(settings, subs, matches) {
     let seenP = Number(state.periodsSeen) || 0;
     for (let pi = seenP; pi < tiers.length; pi++) {
       if (cur < tiers[pi][1] || !state.notifiedStart) break;
-      pushes.push({ title: "🕐 " + tiers[pi][0], body: `${homeName} ${hs} - ${as} ${awayName}`, tag: `tier${pi + 1}_${mid}` });
+      pushes.push({ title: "🕐 " + tiers[pi][0], body: `${homeName} ${hs} - ${as} ${awayName}`, tag: `tier${pi + 1}_${mid}`, kind: "tier" });
       seenP = pi + 1;
     }
     state.periodsSeen = seenP;
@@ -995,7 +1004,7 @@ async function goalAlerts(settings, subs, matches) {
       if (mv.length) mvpTxt = ` — ⭐ Joueur du match : ${mv.join(" et ")}`;
     } catch (e) {}
     pushes.push({ title: won ? "🏆 Victoire des Lynx !" : nul ? "🏁 Match nul" : "💔 Défaite des Lynx...",
-      body: `Score final : ${homeName} ${hs} - ${as} ${awayName}${mvpTxt}`, tag: `liveend_${mid}` });
+      body: `Score final : ${homeName} ${hs} - ${as} ${awayName}${mvpTxt}`, tag: `liveend_${mid}`, kind: "result" });
   }
   if (pushes.length) {
     const webpush = (await import("web-push")).default;
@@ -1003,6 +1012,10 @@ async function goalAlerts(settings, subs, matches) {
     for (const p of pushes) {
       let ok = 0;
       for (const s of subs) {
+        // v2.18 : filtres de notifications fins — chaque appareil choisit buts adverses / fins de tiers / score final
+        if (p.kind === "goal-opp" && s.prefs && s.prefs.goalsOpp === false) continue;
+        if (p.kind === "tier" && s.prefs && s.prefs.tiers === false) continue;
+        if (p.kind === "result" && s.prefs && s.prefs.result === false) continue;
         try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: p.title, body: p.body, url: SITE_URL, tag: p.tag })); ok++; }
         catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
       }
@@ -1120,6 +1133,7 @@ async function ticketCheck(subs) {
         webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
         let ok = 0;
         for (const s of subs) {
+          if (s.prefs && s.prefs.ticket === false) continue; // v2.18 : filtre fin — billetterie désactivable par appareil
           try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🎟️ Billetterie Lynx : places en vente !", body: it.label, url: it.url, tag: "ticket_" + id })); ok++; }
           catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
         }
