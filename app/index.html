@@ -312,7 +312,7 @@
              <!-- v2.19 : accueil réorganisé — matchs et classement en premier (mobile sans scroll interminable), actus à droite calées sur la hauteur de la rangée matchs -->
              <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:grid-flow-row-dense">
                 <!-- Rangée matchs : dernier résultat + prochain match -->
-                <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 self-start">
+                <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-l-4 border-lynx-dark dark:border-gray-500">
                         <h3 class="text-xl font-extrabold mb-2 text-gray-500 dark:text-gray-400 uppercase">Dernier Résultat</h3><div id="latest-result-content" class="min-h-[100px] flex flex-col items-center justify-center"></div>
                     </div>
@@ -326,7 +326,7 @@
                 </div>
 
                 <!-- Classement : remonté juste après les matchs -->
-                <div class="lg:col-span-3 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-6 rounded-xl shadow-xl border border-gray-100/50 dark:border-gray-700/50 self-start">
+                <div class="lg:col-span-3 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-6 rounded-xl shadow-xl border border-gray-100/50 dark:border-gray-700/50">
                     <div class="flex justify-between items-center mb-4 border-b-4 border-lynx-red pb-2">
                          <h3 id="home-ranking-title" class="text-xl font-extrabold flex items-center"><i class="fa-solid fa-list-ol mr-2 text-lynx-red"></i> Classement B</h3>
                          <span class="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold animate-pulse">LIVE</span>
@@ -341,17 +341,17 @@
                 </div>
 
                 <!-- Actus : à droite, même hauteur que la rangée matchs, liste déroulante à l'intérieur -->
-                <div id="home-news-container" class="lg:col-span-2 flex flex-col bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-5 rounded-xl shadow-xl border border-gray-100/50 dark:border-gray-700/50">
-                    <div class="flex justify-between items-center mb-2 border-b-4 border-lynx-red pb-2">
-                        <h3 class="text-lg font-extrabold flex items-center"><i class="fa-solid fa-newspaper mr-2 text-lynx-red"></i> Actualités</h3>
+                <div id="home-news-container" class="lg:col-span-2 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-5 rounded-xl shadow-xl border border-gray-100/50 dark:border-gray-700/50 flex flex-col h-[420px] lg:h-auto">
+                    <div class="flex justify-between items-center mb-3 border-b-4 border-lynx-red pb-2">
+                        <h3 class="text-xl font-extrabold flex items-center"><i class="fa-solid fa-newspaper mr-2 text-lynx-red"></i> Actualités</h3>
                     </div>
-                    <div id="news-list-content" class="flex-1 min-h-0 space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                    <div id="news-list-content" class="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1">
                          <div class="text-center text-sm text-gray-400 italic p-4">Chargement...</div>
                     </div>
                 </div>
 
                 <!-- Météo de l'équipe + carte coach IA -->
-                <div class="lg:col-span-2 space-y-6 self-start">
+                <div class="lg:col-span-2 space-y-6">
                     <div id="morale-container"></div>
 
                     <!-- STRUCTURED BOT PREDICTION CARD (Home) - CLICKABLE -->
@@ -406,7 +406,7 @@
                 </div>
 
                 <!-- SÉRIES & EXTRÊMES -->
-                <div class="lg:col-span-3 space-y-6 self-start">
+                <div class="lg:col-span-3 space-y-6">
                     <!-- SERIES & RECORDS (v2.13, automatique) -->
                     <div id="home-series-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-amber-500 hidden">
                         <h3 class="text-sm font-bold uppercase text-gray-500 mb-3 tracking-widest text-center">📈 Séries &amp; records de la saison</h3>
@@ -442,7 +442,7 @@
                 </div>
 
                 <!-- Useful Links (Dynamic) -->
-                <div class="lg:col-span-2 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-lg border-l-4 border-blue-500 self-start">
+                <div class="lg:col-span-2 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-lg border-l-4 border-blue-500">
                     <h3 class="text-lg font-extrabold mb-3 text-gray-700 dark:text-gray-200 flex items-center"><i class="fa-solid fa-link mr-2 text-blue-500"></i> Liens Utiles</h3>
                     <div id="useful-links-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-2 text-sm font-bold">
                         <div class="col-span-3 text-center text-gray-400 italic">Chargement...</div>
@@ -1192,6 +1192,7 @@
                         <button id="btn-purge-ranking" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Classements</button>
                         <button id="btn-purge-roster" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Effectif (Joueurs+Gardiens)</button>
                         <button id="btn-purge-league" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Top Ligue</button>
+                        <button id="btn-dedupe-calendar" class="py-2 px-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded font-bold text-xs" title="Supprime les matchs en double (même jour, mêmes équipes, casse différente)">🧹 Dédoublonner Matchs</button>
                     </div>
                  </div>
             </div>
@@ -1219,62 +1220,8 @@
                         <button type="submit" class="btn-primary w-full py-2 font-bold">Sauvegarder la Configuration</button>
                     </form>
                     
-                    <!-- NEW: STRUCTURED MANUAL PREDICTION ENTRY -->
                     <div class="mt-6 border-t dark:border-gray-700 pt-4">
-                        <h4 class="font-bold text-sm mb-2 text-lynx-red flex items-center"><i class="fa-solid fa-microphone-lines mr-2"></i> Enregistrer un Prono Structuré</h4>
-                        <p class="text-xs text-gray-500 mb-4">Remplissez les champs pour générer une carte de prono propre sur l'accueil.</p>
-                        
-                        <div class="grid grid-cols-1 gap-3 mb-3">
-                            <div>
-                                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Prochain Match (Sélection)</label>
-                                <select id="bot-pred-match-select" class="w-full p-2 border rounded dark:bg-gray-700 font-bold text-sm">
-                                    <option value="">Chargement...</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="grid grid-cols-2 gap-3 mb-3">
-                            <div>
-                                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1 text-center">Score Domicile</label>
-                                <input type="number" id="bot-pred-score-h" class="w-full p-2 border rounded dark:bg-gray-700 font-black text-center text-lg" placeholder="0">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1 text-center">Score Extérieur</label>
-                                <input type="number" id="bot-pred-score-a" class="w-full p-2 border rounded dark:bg-gray-700 font-black text-center text-lg" placeholder="0">
-                            </div>
-                        </div>
-                        
-                        <div class="grid grid-cols-2 gap-3 mb-3">
-                            <div>
-                                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Confiance (%)</label>
-                                <input type="range" id="bot-pred-confidence" min="1" max="100" value="70" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700">
-                                <div class="text-center text-xs font-bold" id="confidence-val-display">70%</div>
-                            </div>
-                            <div>
-                                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Joueur Clé (Optionnel)</label>
-                                <input type="text" id="bot-pred-player" class="w-full p-1.5 border rounded dark:bg-gray-700 text-sm" placeholder="ex: Tyler Erickson">
-                            </div>
-                        </div>
 
-                        <div>
-                            <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Analyse / Justification (Copier/Coller ici)</label>
-                            <textarea id="manual-bot-pred" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-24" placeholder="Collez ici l'analyse textuelle du bot..."></textarea>
-                        </div>
-                        
-                        <button id="btn-save-bot-pred" class="btn-primary w-full py-2 text-sm mt-3 bg-green-600 hover:bg-green-700">Publier le Pronostic</button>
-
-                        <!-- v2.18 : jauge bookmakers — cotes du prochain match, comparées à la probabilité du modèle (pas un 2e pronostic) -->
-                        <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <h5 class="text-xs font-bold uppercase text-gray-500 mb-1">💸 Bookmakers (prochain match)</h5>
-                            <p class="text-[10px] text-gray-400 mb-2">Saisis les cotes (ex. 2.10) — le site affiche la probabilité implicite comparée à celle du modèle, sur la carte du prochain match.</p>
-                            <div class="grid grid-cols-3 gap-2 mb-2">
-                                <div><label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Cote dom.</label><input type="number" step="0.01" min="1.01" id="odds-home" class="w-full p-1.5 border rounded dark:bg-gray-700 text-sm" placeholder="2.10"></div>
-                                <div><label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Cote nul</label><input type="number" step="0.01" min="1.01" id="odds-draw" class="w-full p-1.5 border rounded dark:bg-gray-700 text-sm" placeholder="3.40"></div>
-                                <div><label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Cote ext.</label><input type="number" step="0.01" min="1.01" id="odds-away" class="w-full p-1.5 border rounded dark:bg-gray-700 text-sm" placeholder="3.10"></div>
-                            </div>
-                            <button id="btn-save-odds" class="w-full py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gray-600 hover:border-lynx-red hover:text-lynx-red transition">💾 Enregistrer les cotes</button>
-                            <button id="btn-clear-odds" class="w-full py-1.5 text-xs font-bold text-gray-400 hover:text-red-500 mt-1">🗑️ Retirer les cotes</button>
-                        </div>
 
                         <!-- v2.18 : réparation d'un rapport live archivé (équipes inversées par le flux FFHG, « ap » erroné) -->
                         <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
@@ -1288,21 +1235,6 @@
                             </div>
                         </div>
 
-                        <!-- v2.18 : absents & blessés — le modèle de prédiction en tient compte pour les matchs à venir -->
-                        <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <h5 class="text-xs font-bold uppercase text-gray-500 mb-1">❌ Absents &amp; blessés</h5>
-                            <p class="text-[10px] text-gray-400 mb-2">Déclare les joueurs indisponibles : le modèle ajuste le pronostic des matchs à venir selon leur part de points (l'historique et la fiabilité mesurée ne sont JAMAIS recalculés). « Retour » vide = jusqu'à nouvel ordre.</p>
-                            <div class="grid grid-cols-2 gap-2 mb-2">
-                                <select id="abs-team" class="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1.5"></select>
-                                <select id="abs-pos" class="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1.5"><option value="F">Joueur de champ</option><option value="G">Gardien</option></select>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2 mb-2">
-                                <input type="text" id="abs-name" class="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1.5" placeholder="Nom du joueur">
-                                <input type="date" id="abs-to" class="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1.5" title="Date de retour prévue (facultatif)">
-                            </div>
-                            <button id="btn-add-absence" class="w-full py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gray-600 hover:border-lynx-red hover:text-lynx-red transition">➕ Ajouter l'absence</button>
-                            <div id="admin-absences-list" class="space-y-1 mt-2"></div>
-                        </div>
 
                         <!-- v2.18 : punchlines maison — remplacent les punchlines IA sur chaque but -->
                         <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
@@ -1603,7 +1535,7 @@
     </div>
 
     <script type="module">
-        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
@@ -3529,10 +3461,10 @@
             const readChips = `<div class="flex flex-wrap gap-2 mb-3 items-center"><span class="text-[10px] font-bold uppercase text-gray-400 mr-1"><i class="fa-solid fa-eye mr-1"></i>Lecture :</span>` + [['all', `Tous (${sorted.length})`], ['unread', `● Non lus (${unreadCount})`], ['read', `✓ Lus (${sorted.length - unreadCount})`]].map(d => `<button class="news-read-chip px-3 py-1 rounded-full text-xs font-bold transition ${readFilter === d[0] ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 shadow' : 'bg-white dark:bg-gray-700 text-gray-500 hover:text-lynx-red'}" data-f="${d[0]}">${d[1]}</button>`).join('') + `</div>`;
             // v2.19 : rangée de hashtags cliquables — un clic filtre les actus sur ce sujet, un 2ᵉ clic retire le filtre
             const allTags = [...new Set(sorted.flatMap(n => newsTagsOf(n)))].slice(0, 14);
-            const tagChips = (allTags.length > 1 || newsTagFilter) ? `<div class="flex flex-wrap gap-2 mb-3 items-center"><span class="text-[10px] font-bold uppercase text-gray-400 mr-1"><i class="fa-solid fa-hashtag mr-1"></i>Sujets :</span>` + allTags.map(t => `<button class="news-tag-chip px-2.5 py-1 rounded-full text-xs font-bold transition ${newsTagFilter && newsTagFilter.toLowerCase() === t.toLowerCase() ? 'bg-lynx-red text-white shadow' : 'bg-white dark:bg-gray-700 text-gray-500 hover:text-lynx-red'}" data-tag="${xmlEsc(t)}">${xmlEsc(t)}</button>`).join('') + `</div>` : '';
+            const tagChips = (allTags.length > 1 || newsTagFilter) ? `<div class="flex items-center gap-2 mb-3 overflow-x-auto"><span class="text-[10px] font-bold text-gray-400 shrink-0"><i class="fa-solid fa-hashtag"></i></span><div class="flex gap-1.5 flex-nowrap">` + allTags.map(t => `<button class="news-tag-chip px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap transition ${newsTagFilter && newsTagFilter.toLowerCase() === t.toLowerCase() ? 'bg-lynx-red text-white shadow' : 'bg-white dark:bg-gray-700 text-gray-500 hover:text-lynx-red'}" data-tag="${xmlEsc(t)}">${xmlEsc(t)}</button>`).join('') + `</div></div>` : '';
             const latest = limited[0] || null; const others = latest ? limited.slice(1) : [];
-            let html = chips + readChips + tagChips + (latest ? `<div class="news-card-featured open-news-modal" data-id="${latest.id}"><div class="absolute top-0 right-0 p-2 flex flex-col items-end gap-2"><i class="fa-solid fa-bullhorn text-4xl opacity-50"></i><button class="share-news-btn text-gray-500 hover:text-lynx-red font-bold text-xs" data-id="${latest.id}" title="Partager / publier sur les réseaux (tu choisis le réseau, rien n'est envoyé tout seul)"><i class="fa-solid fa-share-nodes"></i></button>${adm ? `<div class="flex gap-2"><button class="edit-news-btn text-gray-500 hover:text-blue-600 font-bold text-xs" data-id="${latest.id}" title="Modifier"><i class="fa-solid fa-pen"></i></button><button class="del-news-btn text-gray-500 hover:text-red-600 font-bold text-xs" data-id="${latest.id}" title="Supprimer"><i class="fa-solid fa-trash"></i></button></div>` : ''}</div><div class="text-[10px] uppercase font-bold opacity-80 mb-1">${isItemUnread(latest.id, latest.date) ? '<span class="text-lynx-red">● Non lu · </span>' : '<span class="opacity-50">✓ Lu · </span>'}${latest.kind === 'preview' ? '🔮 AVANT-MATCH · ' : latest.kind === 'result' ? '📊 RÉSUMÉ · ' : latest.kind === 'month' ? '📅 RÉCAP · ' : latest.kind === 'poule' ? '🏆 PANORAMA · ' : latest.kind === 'stats' ? '📈 STATS · ' : '📰 '}${new Date(latest.date).toLocaleDateString()}</div><h3 class="text-xl font-black mb-2 leading-tight">${latest.title}</h3><p class="text-sm opacity-90 line-clamp-2">${latest.content.substring(0, 100)}...</p><div class="flex flex-wrap gap-1 mt-2">${newsTagsOf(latest).map(t => `<button class="news-tag-chip text-[10px] font-bold bg-white/20 rounded-full px-2 py-0.5 hover:bg-white/40" data-tag="${xmlEsc(t)}">${xmlEsc(t)}</button>`).join('')}</div><div class="mt-3 text-xs font-bold uppercase tracking-widest flex items-center gap-1">Lire plus <i class="fa-solid fa-arrow-right"></i></div></div>` : '');
-            if(others.length > 0) { html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">`; html += others.map(n => `<div class="news-card-normal open-news-modal" data-id="${n.id}"><div class="text-[10px] text-gray-400 font-bold">${isItemUnread(n.id, n.date) ? '<span class="text-lynx-red">●</span>' : '<span class="opacity-50">✓</span>'} ${n.kind === 'preview' ? '🔮 ' : n.kind === 'result' ? '📊 ' : n.kind === 'month' ? '📅 ' : n.kind === 'poule' ? '🏆 ' : n.kind === 'stats' ? '📈 ' : ''}${new Date(n.date).toLocaleDateString()}</div><h4 class="font-bold text-sm line-clamp-1">${n.title}</h4><div class="flex flex-wrap gap-1 mb-1">${newsTagsOf(n).map(t => `<button class="news-tag-chip text-[9px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-500 rounded-full px-1.5 py-0.5 hover:text-lynx-red" data-tag="${xmlEsc(t)}">${xmlEsc(t)}</button>`).join('')}</div><button class="share-news-btn text-[10px] text-gray-400 hover:text-lynx-red font-bold" data-id="${n.id}" title="Partager / publier (tu choisis le réseau, rien n'est envoyé tout seul)">🔗 Partager</button>${adm ? `<div class="flex gap-2 mt-1"><button class="edit-news-btn text-[10px] text-gray-400 hover:text-blue-500 font-bold" data-id="${n.id}">✏️ Modifier</button><button class="del-news-btn text-[10px] text-gray-400 hover:text-red-500 font-bold" data-id="${n.id}">🗑️ Supprimer</button></div>` : ''}</div>`).join(''); html += `</div>`; } 
+            let html = chips + readChips + tagChips + (latest ? `<div class="news-card-featured open-news-modal" data-id="${latest.id}"><div class="absolute top-0 right-0 p-2 flex flex-col items-end gap-2"><i class="fa-solid fa-bullhorn text-4xl opacity-50"></i><button class="share-news-btn text-gray-500 hover:text-lynx-red font-bold text-xs" data-id="${latest.id}" title="Partager / publier sur les réseaux (tu choisis le réseau, rien n'est envoyé tout seul)"><i class="fa-solid fa-share-nodes"></i></button>${adm ? `<div class="flex gap-2"><button class="edit-news-btn text-gray-500 hover:text-blue-600 font-bold text-xs" data-id="${latest.id}" title="Modifier"><i class="fa-solid fa-pen"></i></button><button class="del-news-btn text-gray-500 hover:text-red-600 font-bold text-xs" data-id="${latest.id}" title="Supprimer"><i class="fa-solid fa-trash"></i></button></div>` : ''}</div><div class="text-[10px] uppercase font-bold opacity-80 mb-1">${isItemUnread(latest.id, latest.date) ? '<span class="text-lynx-red">● Non lu · </span>' : '<span class="opacity-50">✓ Lu · </span>'}${latest.kind === 'preview' ? '🔮 AVANT-MATCH · ' : latest.kind === 'result' ? '📊 RÉSUMÉ · ' : latest.kind === 'month' ? '📅 RÉCAP · ' : latest.kind === 'poule' ? '🏆 PANORAMA · ' : latest.kind === 'stats' ? '📈 STATS · ' : '📰 '}${new Date(latest.date).toLocaleDateString()}</div><h3 class="text-xl font-black mb-2 leading-tight">${latest.title}</h3><p class="text-sm opacity-90 line-clamp-2">${latest.content.substring(0, 100)}...</p><div class="mt-3 text-xs font-bold uppercase tracking-widest flex items-center gap-1">Lire plus <i class="fa-solid fa-arrow-right"></i></div></div>` : '');
+            if(others.length > 0) { html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">`; html += others.map(n => `<div class="news-card-normal open-news-modal" data-id="${n.id}"><div class="text-[10px] text-gray-400 font-bold">${isItemUnread(n.id, n.date) ? '<span class="text-lynx-red">●</span>' : '<span class="opacity-50">✓</span>'} ${n.kind === 'preview' ? '🔮 ' : n.kind === 'result' ? '📊 ' : n.kind === 'month' ? '📅 ' : n.kind === 'poule' ? '🏆 ' : n.kind === 'stats' ? '📈 ' : ''}${new Date(n.date).toLocaleDateString()}</div><h4 class="font-bold text-sm line-clamp-1">${n.title}</h4><button class="share-news-btn text-[10px] text-gray-400 hover:text-lynx-red font-bold" data-id="${n.id}" title="Partager / publier (tu choisis le réseau, rien n'est envoyé tout seul)">🔗 Partager</button>${adm ? `<div class="flex gap-2 mt-1"><button class="edit-news-btn text-[10px] text-gray-400 hover:text-blue-500 font-bold" data-id="${n.id}">✏️ Modifier</button><button class="del-news-btn text-[10px] text-gray-400 hover:text-red-500 font-bold" data-id="${n.id}">🗑️ Supprimer</button></div>` : ''}</div>`).join(''); html += `</div>`; } 
             if(newsFilter === 'all' && filtered.length > 12 && !newsShowAll) html += `<button id="news-show-all" class="w-full py-2 mt-2 text-xs font-bold text-gray-400 hover:text-lynx-red transition"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Afficher les ${filtered.length} articles — historique complet</button>`;
             container.innerHTML = html;
             document.querySelectorAll('.news-filter-chip').forEach(b => { b.onclick = () => { newsFilter = b.dataset.f; renderNews(); }; });
@@ -3648,20 +3580,6 @@
             }
         }
         
-        // --- NEW: Populate Admin Dropdown ---
-        function updateAdminBotMatchSelect() {
-            const select = document.getElementById('bot-pred-match-select');
-            const upcoming = allMatches.filter(m => m.season === activeSeason && !isMatchFinished(m)).sort((a,b) => new Date(a.date) - new Date(b.date));
-            
-            if(upcoming.length === 0) {
-                select.innerHTML = '<option value="">Aucun match à venir</option>';
-                return;
-            }
-            
-            select.innerHTML = '<option value="">Choisir un match...</option>' + upcoming.map(m => 
-                `<option value="${m.id}" data-home="${m.homeTeam}" data-away="${m.awayTeam}">${new Date(m.date).toLocaleDateString()} : ${m.homeTeam} vs ${m.awayTeam}</option>`
-            ).join('');
-        }
 
         function renderAdminContext() { 
             document.getElementById('admin-context-list').innerHTML = knowledgeBase.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(n => `<div class="bg-white dark:bg-gray-700 p-3 rounded flex justify-between items-center shadow-sm border-l-4 border-purple-500"><div class="truncate pr-2"><div class="font-bold text-sm truncate">${n.title}</div><div class="text-[10px] text-gray-500 line-clamp-1">${n.content}</div></div><button class="delete-context-btn text-red-500 hover:bg-red-50 p-2 rounded" data-id="${n.id}"><i class="fa-solid fa-trash"></i></button></div>`).join(''); 
@@ -4304,7 +4222,6 @@
             renderCharts();
             renderMaintien(sMatches);
             
-            updateAdminBotMatchSelect(); // NEW: Populate dropdown
             
             // Auto-set Comparator to next match
             if(next.length && document.getElementById('comp-team-a').value === '') {
@@ -4473,30 +4390,6 @@
                 share += (s != null) ? s : 0.15; // joueur inconnu en base → part forfaitaire raisonnable
             });
             return { att: Math.max(0.6, 1 - Math.min(0.4, share)), gk, n: act.length };
-        }
-        // v2.18 : carte Admin « Absents & blessés » — déclaration, liste, suppression
-        function populateAbsTeams() {
-            const sel = document.getElementById('abs-team'); if (!sel) return;
-            const teams = [...new Set(allMatches.filter(m => m.season === activeSeason).flatMap(m => [m.homeTeam, m.awayTeam]).filter(Boolean))].sort();
-            const cur = sel.value;
-            sel.innerHTML = '<option value="">— équipe —</option>' + teams.map(t => `<option value="${xmlEsc(t)}">${xmlEsc(t)}</option>`).join('');
-            if (cur) sel.value = cur;
-        }
-        function renderAbsList() {
-            const host = document.getElementById('admin-absences-list'); if (!host) return;
-            const list = Array.isArray(absentPlayers) ? absentPlayers : [];
-            host.innerHTML = list.length ? list.map((a, i) => `<div class="flex items-center justify-between gap-2 bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-xs"><span class="truncate min-w-0"><span class="font-bold">${xmlEsc(a.team)}</span> — ${xmlEsc(a.name)} <span class="text-gray-400">${String(a.pos) === 'G' ? '(gardien)' : ''}${a.to ? ' · retour le ' + xmlEsc(a.to) : ''}</span></span><button class="delete-absence-btn text-red-500 hover:text-red-700 font-bold px-1 shrink-0" data-idx="${i}" title="Supprimer">🗑️</button></div>`).join('') : '<div class="text-[10px] text-gray-400 italic">Aucun absent déclaré.</div>';
-            host.querySelectorAll('.delete-absence-btn').forEach(b => b.onclick = async () => {
-                if (!adminCanEdit()) { appAlert('🔒 Réservé à l\'Admin déverrouillé.'); return; }
-                const i = Number(b.dataset.idx); if (isNaN(i)) return;
-                await saveAbsences(list.filter((_, x) => x !== i));
-            });
-        }
-        function renderAbsAdmin() { try { populateAbsTeams(); } catch (e) {} try { renderAbsList(); } catch (e) {} }
-        async function saveAbsences(list) {
-            absentPlayers = list || [];
-            try { await setDoc(doc(db, `${basePath}/settings/general`), { absences: absentPlayers }, { merge: true }); appAlert('✅ Absents enregistrés — le modèle ajuste les pronostics des matchs à venir.'); } catch (e) { appAlert('Impossible : ' + (e && e.message ? e.message : 'erreur')); }
-            renderAbsAdmin();
         }
         function predictMatch(model, homeTeam, awayTeam, matchTs) {
             const st = model.stats;
@@ -5887,13 +5780,13 @@ ${cards}
                 .sort((a, b) => (a.eventDate || Infinity) - (b.eventDate || Infinity));
             const t = cand[0];
             if (!t) { el.innerHTML = ''; return; }
-            el.innerHTML = `<div class="bg-gradient-to-r from-lynx-red to-red-700 text-white p-4 md:p-6 rounded-xl shadow-2xl flex flex-col md:flex-row items-center gap-4 border-4 border-red-300/50">
-                <div class="text-4xl md:text-5xl">🎟️</div>
+            el.innerHTML = `<div class="bg-gradient-to-r from-lynx-red to-red-700 text-white p-3 md:p-4 rounded-xl shadow-2xl flex flex-col md:flex-row items-center gap-3 border-2 border-red-300/50">
+                <div class="text-2xl md:text-3xl">🎟️</div>
                 <div class="flex-1 text-center md:text-left">
-                    <div class="text-[10px] md:text-xs font-bold uppercase tracking-[0.25em] opacity-80 mb-1">Billetterie ouverte</div>
-                    <div class="text-base md:text-2xl font-black leading-tight">${xmlEsc(t.label)}</div>
+                    <div class="text-[10px] md:text-xs font-bold uppercase tracking-[0.25em] opacity-80 mb-0.5">Billetterie ouverte</div>
+                    <div class="text-sm md:text-lg font-black leading-tight">${xmlEsc(t.label)}</div>
                 </div>
-                <a href="${xmlEsc(t.url)}" target="_blank" rel="noopener" class="bg-white text-lynx-red font-black text-sm md:text-base px-6 py-3 rounded-lg shadow hover:bg-gray-100 hover:scale-105 transition whitespace-nowrap">Réserver mes places ↗</a>
+                <a href="${xmlEsc(t.url)}" target="_blank" rel="noopener" class="bg-white text-lynx-red font-black text-xs md:text-sm px-4 py-2 rounded-lg shadow hover:bg-gray-100 hover:scale-105 transition whitespace-nowrap">Réserver mes places ↗</a>
             </div>`;
         }
         // --- Admin → Diagnostic : versions déployées + état de l'action GitHub (doc settings/health) ---
@@ -6406,7 +6299,7 @@ ${cards}
                         const ohIn = document.getElementById('odds-home'), onIn = document.getElementById('odds-draw'), oaIn = document.getElementById('odds-away');
                         if (ohIn && !ohIn.value) { ohIn.value = d.oddsNext.cH; onIn.value = d.oddsNext.cN; oaIn.value = d.oddsNext.cA; }
                     } else { oddsNext = null; } 
-                    // v2.18 : absents déclarés (modèle de prédiction) + punchlines maison
+                    // v2.18 : punchlines maison
                     if (Array.isArray(d.absences)) absentPlayers = d.absences;
                     if (Array.isArray(d.customPunchlines)) customPunchlines = d.customPunchlines;
                     // v2.19 : hashtags de partage (articles + presse), éditables en Admin → News
@@ -6414,7 +6307,6 @@ ${cards}
                     const stIn = document.getElementById('admin-share-tags'); if (stIn && !stIn.value) stIn.value = shareTags;
                     const cpTa = document.getElementById('custom-punchlines');
                     if (cpTa && !cpTa.value && customPunchlines.length) cpTa.value = customPunchlines.join('\n');
-                    try { renderAbsAdmin(); } catch (e) {}
                 } 
                 scheduleUI(); 
             }); 
@@ -6775,54 +6667,6 @@ ${cards}
             // BOT CONFIG SAVE
             document.getElementById('bot-config-form').onsubmit = async (e) => { e.preventDefault(); const t = document.getElementById('bot-tone').value; const p = document.getElementById('bot-persona').value; await setDoc(doc(db, `${basePath}/settings/bot`), { tone: t, persona: p }, {merge:true}); appAlert('Configuration Bot Sauvegardée !'); };
             
-            // NEW: BOT MANUAL PREDICTION SAVE (STRUCTURED)
-            document.getElementById('bot-pred-confidence').oninput = (e) => document.getElementById('confidence-val-display').textContent = e.target.value + '%';
-            
-            document.getElementById('btn-save-bot-pred').onclick = async () => {
-                const matchSelect = document.getElementById('bot-pred-match-select');
-                const matchId = matchSelect.value;
-                const scoreH = document.getElementById('bot-pred-score-h').value;
-                const scoreA = document.getElementById('bot-pred-score-a').value;
-                const confidence = document.getElementById('bot-pred-confidence').value;
-                const player = document.getElementById('bot-pred-player').value;
-                const analysis = document.getElementById('manual-bot-pred').value;
-                
-                if(!analysis || !matchId) { appAlert("Match et Analyse obligatoires !"); return; }
-                
-                const selectedOption = matchSelect.options[matchSelect.selectedIndex];
-                const homeTeam = selectedOption.dataset.home;
-                const awayTeam = selectedOption.dataset.away;
-
-                await addDoc(collection(db, `${basePath}/bot-history`), {
-                    matchId,
-                    homeTeam,
-                    awayTeam,
-                    predScoreHome: scoreH || 0,
-                    predScoreAway: scoreA || 0,
-                    confidence: confidence,
-                    keyPlayer: player,
-                    analysis: analysis,
-                    date: new Date().toISOString()
-                });
-                
-                // Clear fields
-                document.getElementById('manual-bot-pred').value = '';
-                document.getElementById('bot-pred-score-h').value = '';
-                document.getElementById('bot-pred-score-a').value = '';
-                document.getElementById('bot-pred-player').value = '';
-                
-                appAlert("Prédiction structurée enregistrée !");
-            };
-
-            // v2.18 : jauge bookmakers — enregistrement / suppression des cotes du prochain match
-            const btnSaveOdds = document.getElementById('btn-save-odds');
-            if (btnSaveOdds) btnSaveOdds.onclick = async () => {
-                const oh = parseFloat((document.getElementById('odds-home') || {}).value), onD = parseFloat((document.getElementById('odds-draw') || {}).value), oa = parseFloat((document.getElementById('odds-away') || {}).value);
-                if (!(oh > 1 && onD > 1 && oa > 1)) { appAlert('Remplis les 3 cotes (valeurs supérieures à 1 — ex. 2.10).'); return; }
-                try { await setDoc(doc(db, `${basePath}/settings/general`), { oddsNext: { cH: oh, cN: onD, cA: oa, updatedAt: new Date().toISOString() } }, { merge: true }); appAlert("Cotes enregistrées — la comparaison avec le modèle s'affiche sur la carte du prochain match."); } catch (err) { appAlert('Erreur : ' + err.message); }
-            };
-            const btnClrOdds = document.getElementById('btn-clear-odds');
-            if (btnClrOdds) btnClrOdds.onclick = async () => { try { await setDoc(doc(db, `${basePath}/settings/general`), { oddsNext: null }, { merge: true }); appAlert('Cotes retirées.'); } catch (err) {} };
 
             // --- PURGE ACTIONS (DANGER ZONE) ---
             document.getElementById('btn-purge-calendar').onclick = () => {
@@ -6853,6 +6697,29 @@ ${cards}
                     const toDelete = leaguePlayers.filter(p => p.season === activeSeason);
                     for(const p of toDelete) await deleteDoc(doc(db, `${basePath}/league-players/${p.season}_${normalize(p.name)}`));
                     appAlert(`${toDelete.length} joueurs de la ligue supprimés.`);
+                });
+            };
+            // v2.20 : dédoublonnage du calendrier — détecte les matchs dupliqués (même jour, mêmes équipes, casse/heure différentes)
+            // et supprime les doublons en gardant la version avec score, sinon celle avec l'horaire réel (l'import sans heure écrit à minuit).
+            const btnDedupeCal = document.getElementById('btn-dedupe-calendar');
+            if (btnDedupeCal) btnDedupeCal.onclick = () => {
+                if (!adminCanEdit()) { appAlert('🔒 Réservé à l\'Admin déverrouillé.'); return; }
+                const dayKey = m => new Date(new Date(m.date).getTime() + 3600000).toISOString().slice(0, 10);
+                const keyOf = m => normalize(m.homeTeam) + '|' + normalize(m.awayTeam) + '|' + dayKey(m);
+                const groups = {};
+                allMatches.forEach(m => { if (!m.date || !m.homeTeam || !m.awayTeam) return; const k = keyOf(m); (groups[k] = groups[k] || []).push(m); });
+                const dups = Object.values(groups).filter(g => g.length > 1);
+                if (!dups.length) { appAlert('✅ Aucun match en double détecté.'); return; }
+                const toDelete = [];
+                dups.forEach(g => {
+                    const rank = m => ((m.scoreHome != null || m.scoreAway != null) ? 2 : 0) + (/T23:00:00/.test(String(m.date)) ? 0 : 1);
+                    g.sort((a, b) => rank(b) - rank(a));
+                    g.forEach(m => { if (m.id !== g[0].id) toDelete.push(m); });
+                });
+                appConfirm(`Supprimer ${toDelete.length} match(s) en double ? On garde la version avec score, sinon celle avec l'horaire réel.`, async () => {
+                    let done = 0;
+                    for (const m of toDelete) { try { await deleteDoc(doc(db, `${basePath}/calendar/${m.id}`)); done++; } catch (e) {} }
+                    appAlert(`✅ ${done} doublon(s) supprimé(s) — calendrier propre.`);
                 });
             };
 
@@ -8362,7 +8229,6 @@ ${cards}
             };
             populateLiveReplay();
             populateFixRep();
-            renderAbsAdmin(); // v2.18 : carte Admin « Absents & blessés »
             if (!liveDetectTried) { liveDetectTried = true; setTimeout(() => { const li0 = document.getElementById('live-match-url'); if (li0 && !li0.value.trim()) liveAutoDetect().catch(() => {}); }, 3000); }
             // ---- v2.13 : mode patinoire — écran allumé pendant le direct (Screen Wake Lock) ----
             let liveWakeLock = null, liveWakeOn = false;
@@ -8473,15 +8339,7 @@ ${cards}
                 if (!confirm('Supprimer ce rapport live ?')) return;
                 try { await deleteDoc(doc(db, `${basePath}/live-reports/${d.id}`)); appAlert('🗑️ Rapport supprimé.'); populateFixRep(); } catch (e) { appAlert('Impossible : ' + (e && e.message ? e.message : 'erreur')); }
             };
-            // v2.18 : absents & blessés + punchlines maison
-            const btnAddAbs = document.getElementById('btn-add-absence');
-            if (btnAddAbs) btnAddAbs.onclick = async () => {
-                if (!adminCanEdit()) { appAlert('🔒 Réservé à l\'Admin déverrouillé.'); return; }
-                const team = document.getElementById('abs-team').value, name = document.getElementById('abs-name').value.trim(), pos = document.getElementById('abs-pos').value, to = document.getElementById('abs-to').value;
-                if (!team || !name) { appAlert('Choisis l\'équipe et saisis le nom du joueur.'); return; }
-                await saveAbsences([...absentPlayers, { team, name, pos, from: new Date().toISOString().slice(0, 10), to: to || '' }]);
-                document.getElementById('abs-name').value = ''; document.getElementById('abs-to').value = '';
-            };
+            // v2.18 : punchlines maison
             const btnPunch = document.getElementById('btn-save-punchlines');
             if (btnPunch) btnPunch.onclick = async () => {
                 if (!adminCanEdit()) { appAlert('🔒 Réservé à l\'Admin déverrouillé.'); return; }
