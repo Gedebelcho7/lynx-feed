@@ -1,0 +1,14 @@
+{
+  "name": "Les Lynx de Valence — Hub",
+  "short_name": "Lynx",
+  "description": "Résultats, classements, pronostics et actus des Lynx de Valence (hockey sur glace)",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#d90429",
+  "icons": [
+    { "src": "logo-512.png", "sizes": "any", "type": "image/png", "purpose": "any" },
+    { "src": "logo-512.png", "sizes": "any", "type": "image/png", "purpose": "maskable" }
+  ]
+}
