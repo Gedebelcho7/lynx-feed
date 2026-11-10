@@ -8,8 +8,8 @@
 const PROJECT = "lnx-data";
 const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
-const SITE_URL = "https://gedebelcho7.github.io/lynx-feed/app/"; // ⚠️ REMPLACE par l'URL réelle de ton app (étape B2-3)
-const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // ⚠️ REMPLACE par l'URL Pages du dépôt lynx-feed (étape B2-3) — l'URL où vivent feed.xml et actus.html
+const SITE_URL = "https://gedebelcho7.github.io/lynx-feed/app/"; // l'app, servie par GitHub Pages (dossier app/ du dépôt lynx-feed)
+const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // racine Pages du dépôt lynx-feed — l'URL où vivent feed.xml et actus.html
 const KIT_VERSION = "2.17"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
@@ -103,9 +103,12 @@ const dayKey = (iso) => { try { return new Intl.DateTimeFormat("en-CA", { timeZo
 function decodeEnt(s) {
   return String(s || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => { try { return String.fromCodePoint(parseInt(h, 16)); } catch (e) { return ""; } })
+    .replace(/&#(\d+);/g, (m, d) => { try { return String.fromCodePoint(Number(d)); } catch (e) { return ""; } })
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&apos;/g, "'");
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&"); // 2e passe : certains flux (Google News) échappent deux fois leurs liens (&amp;amp; → &amp; → &)
 }
 function pickTag(xml, tag) {
   const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
@@ -284,7 +287,7 @@ async function buildFeed(news, extItems, autoItems, ticketEvents) {
     feedItems.push({ title: n.title, description: txt, link: `${FEED_URL}actus.html#${gid}`, date: n.date, guid: gid, category: cat });
   }
   const extSorted = [...extItems].filter(i => i.pubDate).sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate)).slice(0, MAX_EXT_ITEMS);
-  for (const it of extSorted) feedItems.push({ title: `[${it.source}] ${it.title}`, description: it.description || "", link: it.link || `${FEED_URL}actus.html`, date: it.pubDate, guid: `ext-${hashId(String(it.link || it.title || "").toLowerCase())}`, category: "Presse" });
+  for (const it of extSorted) feedItems.push({ title: `[${it.source}] ${decodeEnt(it.title)}`, description: decodeEnt(it.description || ""), link: (it.link ? decodeEnt(it.link) : "") || `${FEED_URL}actus.html`, date: it.pubDate, guid: `ext-${hashId(String(it.link || it.title || "").toLowerCase())}`, category: "Presse" });
   for (const it of autoItems) feedItems.push({ ...it, link: `${FEED_URL}actus.html#${it.guid}` });
   for (const it of (ticketEvents || [])) feedItems.push({ title: "🎟️ Billetterie : " + it.label, description: "Les places sont en vente sur la billetterie en ligne du club.", link: it.url, date: new Date(it.evTs || Date.now()).toISOString(), guid: "ticket-" + hashId(String(it.url).toLowerCase()), category: "Billetterie" });
   // lastBuildDate = date du dernier item → le fichier ne change que si le contenu change (pas de commit inutile)
