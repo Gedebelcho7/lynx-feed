@@ -2100,34 +2100,73 @@
                     .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
                 if (!up.length && !lynxNext) { el.innerHTML = ''; return; }
                 const lynxPos = (rows) => { const s = sortRankFFHG(rows.map(r => ({ ...r })), activeSeason); const i = s.findIndex(t => normalize(t.team).includes('valence')); return i >= 0 ? i + 1 : null; };
-                const rows = [];
-                if (lynxNext) {
-                    // v2.22 : le prochain match des Lynx aussi — les 4 issues (barème FFHG : V = 3, V ap = 2, D ap = 1, D = 0)
-                    const addLynx = (n) => { const c = base.map(r => ({ ...r })); const v = c.find(r => normalize(r.team).includes('valence')); if (v) v.pts = (v.pts || 0) + n; return lynxPos(c); };
-                    [['si les Lynx gagnent', 3], ['si les Lynx gagnent (ap)', 2], ['si les Lynx perdent (ap)', 1], ['si les Lynx perdent', 0]].forEach(b => rows.push({ m: lynxNext, lynx: true, lbl: b[0], p: addLynx(b[1]) }));
-                }
-                up.forEach(m => {
-                    const cloneH = base.map(r => ({ ...r })), cloneA = base.map(r => ({ ...r }));
-                    const h = cloneH.find(r => normalize(r.team) === normalize(m.homeTeam)); if (h) h.pts = (h.pts || 0) + 3;
-                    const a = cloneA.find(r => normalize(r.team) === normalize(m.awayTeam)); if (a) a.pts = (a.pts || 0) + 3;
-                    const pH = lynxPos(cloneH), pA = lynxPos(cloneA);
-                    if (pH != null || pA != null) rows.push({ m, pH, pA });
-                });
-                if (!rows.length) { el.innerHTML = ''; return; }
-                const dOpts = { weekday: 'short', day: 'numeric', month: 'short' };
-                const seg = (p, lbl) => p == null ? '' : `<span class="${p < pos0 + 1 ? 'text-green-600 font-bold' : (p > pos0 + 1 ? 'text-red-500' : 'text-gray-500')}">${xmlEsc(lbl)} → Lynx ${p}e</span>`;
-                const line = (r) => {
-                    const when = new Date(r.m.date).toLocaleDateString('fr-FR', dOpts) + ' ' + new Date(r.m.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                    let parts = [];
-                    if (r.lynx) { parts = [seg(r.p, r.lbl)]; }
-                    else {
-                        if (r.pH != null) parts.push(seg(r.pH, 'si ' + r.m.homeTeam + ' gagne'));
-                        if (r.pA != null) parts.push(seg(r.pA, 'si ' + r.m.awayTeam + ' gagne'));
-                    }
-                    if (!parts.length) return '';
-                    return `<div class="py-1.5 border-t border-gray-100 dark:border-gray-700/60"><div class="text-[11px] font-bold ${r.lynx ? 'text-lynx-red dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}">${r.lynx ? '🦁' : '⚔️'} ${xmlEsc(r.m.homeTeam)} - ${xmlEsc(r.m.awayTeam)} <span class="text-gray-400 font-normal">· ${when}</span></div><div class="text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-3">${parts.join('')}</div></div>`;
+                // v2.22 : 4 scénarios combinés (idéal / le plus probable / moyen / pire) — Lynx + concurrents,
+                // calculés uniquement avec les données du site (moteur Poisson + forme de l'onglet Prévisions, zéro IA).
+                const allUp = [...(lynxNext ? [lynxNext] : []), ...up];
+                let model = null;
+                try {
+                    const played = (matches || []).filter(m => m.season === activeSeason && isMatchFinished(m) && (!m.type || m.type === 'Saison'));
+                    if (played.length >= 3) model = buildPoolModel(played);
+                } catch (e) {}
+                const pred = (m) => { try { return model ? predictMatch(model, m.homeTeam, m.awayTeam, new Date(m.date).getTime()) : null; } catch (e) { return null; } };
+                const rankIdx = (t) => base.findIndex(r => normalize(r.team) === normalize(t));
+                const isLynxM = (m) => normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence');
+                // adj : Map équipe normalisée → points ajoutés (fractionnaires acceptés pour le scénario moyen)
+                const buildAdj = (lynxPts, otherRule) => {
+                    const adj = new Map();
+                    const add = (t, n) => { const k = normalize(t); adj.set(k, (adj.get(k) || 0) + n); };
+                    allUp.forEach(m => {
+                        if (isLynxM(m)) {
+                            const lT = normalize(m.homeTeam).includes('valence') ? m.homeTeam : m.awayTeam;
+                            const oT = lT === m.homeTeam ? m.awayTeam : m.homeTeam;
+                            add(lT, lynxPts); if (lynxPts === 0) add(oT, 3); // pire scénario : défaite en temps réglementaire, l'adversaire prend 3 pts
+                            return;
+                        }
+                        const better = rankIdx(m.homeTeam) <= rankIdx(m.awayTeam) ? m.homeTeam : m.awayTeam; // le mieux classé = la menace la plus sérieuse
+                        const other = better === m.homeTeam ? m.awayTeam : m.homeTeam;
+                        const [wPts, lPts] = otherRule === 'betterWins' ? [3, 0] : [0, 3];
+                        add(better, wPts); add(other, lPts);
+                    });
+                    return adj;
                 };
-                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Position des Lynx selon chaque issue — actuellement ${pos0 + 1}e · chez les autres, victoire = 3 pts <span class="whitespace-nowrap">(prolongation : 2 pts / 1 pt, non simulé)</span></p>${rows.map(line).join('')}</div>`;
+                const probAdj = () => {
+                    const adj = new Map();
+                    const add = (t, n) => { const k = normalize(t); adj.set(k, (adj.get(k) || 0) + n); };
+                    allUp.forEach(m => {
+                        const pr = pred(m);
+                        const winN = pr ? (pr.expWinner === 'H' ? m.homeTeam : m.awayTeam) : (rankIdx(m.homeTeam) <= rankIdx(m.awayTeam) ? m.homeTeam : m.awayTeam);
+                        add(winN, 3);
+                    });
+                    return adj;
+                };
+                const expAdj = () => {
+                    const adj = new Map();
+                    const add = (t, n) => { const k = normalize(t); adj.set(k, (adj.get(k) || 0) + n); };
+                    allUp.forEach(m => {
+                        const pr = pred(m);
+                        if (pr && pr.ePts) { add(m.homeTeam, pr.ePts[0]); add(m.awayTeam, pr.ePts[1]); }
+                        else { const w = rankIdx(m.homeTeam) <= rankIdx(m.awayTeam) ? m.homeTeam : m.awayTeam; add(w, 3); }
+                    });
+                    return adj;
+                };
+                const applyAdj = (adj) => lynxPos(base.map(r => ({ ...r, pts: (r.pts || 0) + (adj.get(normalize(r.team)) || 0) })));
+                const posTxt = (p) => p == null ? '?' : p + (p === 1 ? 'ᵉʳ' : 'e');
+                const detProb = allUp.map(m => { const pr = pred(m); const w = pr ? (pr.expWinner === 'H' ? m.homeTeam : m.awayTeam) : (rankIdx(m.homeTeam) <= rankIdx(m.awayTeam) ? m.homeTeam : m.awayTeam); const l = w === m.homeTeam ? m.awayTeam : m.homeTeam; return `${w} bat ${l}`; }).join(' · ') + (model ? '' : ' (modèle indisponible : favori au classement)');
+                let eLynxTxt = '';
+                if (lynxNext) { const pr = pred(lynxNext); if (pr && pr.ePts) eLynxTxt = ` — Lynx ${((normalize(lynxNext.homeTeam).includes('valence') ? pr.ePts[0] : pr.ePts[1]) || 0).toFixed(1)} pt(s) attendus`; }
+                const oppL = lynxNext ? (normalize(lynxNext.homeTeam).includes('valence') ? lynxNext.awayTeam : lynxNext.homeTeam) : '';
+                const scenarios = [
+                    { ico: '🏆', lbl: 'Scénario idéal', adj: buildAdj(3, 'betterLoses'), det: `Victoire des Lynx${oppL ? ' contre ' + oppL : ''} · partout ailleurs, l'équipe la mieux classée s'incline` },
+                    { ico: '🔮', lbl: 'Le plus probable', adj: probAdj(), det: detProb },
+                    { ico: '📊', lbl: 'Le moyen', adj: expAdj(), det: `Chaque équipe marque ses points attendus par le modèle${eLynxTxt}` },
+                    { ico: '💀', lbl: 'Pire scénario', adj: buildAdj(0, 'betterWins'), det: `Défaite des Lynx${oppL ? ' contre ' + oppL : ''} · partout ailleurs, l'équipe la mieux classée gagne` }
+                ];
+                const rowsHtml = scenarios.map(sc => {
+                    const p = applyAdj(sc.adj);
+                    const cls = p == null ? 'text-gray-500' : (p < pos0 + 1 ? 'text-green-600 dark:text-green-400' : (p > pos0 + 1 ? 'text-red-500 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'));
+                    return `<div class="py-2 border-t border-gray-100 dark:border-gray-700/60 flex items-start gap-2"><span class="text-base leading-5">${sc.ico}</span><div class="flex-1 min-w-0"><div class="flex items-baseline gap-2 flex-wrap"><span class="text-xs font-bold">${sc.lbl}</span><span class="text-sm font-black ${cls}">→ Lynx ${posTxt(p)}</span></div><div class="text-[10px] text-gray-400 leading-snug">${xmlEsc(sc.det)}</div></div></div>`;
+                }).join('');
+                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Place des Lynx en combinant tous les résultats — actuellement ${pos0 + 1}${pos0 === 0 ? 'ᵉʳ' : 'e'} · calculé par le modèle du site (données internes, aucune IA)</p>${rowsHtml}</div>`;
             } catch (e) { el.innerHTML = ''; }
         }
 
@@ -3146,9 +3185,13 @@
                 // v2.22 : rang en saison régulière + division + phases (playoffs/maintien) par saison
                 const seasons = Object.keys(byS).sort();
                 seasons.forEach(s => {
+                    // Rang calculé sur TOUS les matchs finis de la saison en base (pas seulement ceux des Lynx) :
+                    // l'ancien calcul ne comptait que les matchs de Valence, donc les adversaires n'avaient
+                    // que leurs points pris ou donnés contre Valence — classement faux.
+                    const allDone = (allMatches || []).filter(m => isMatchFinished(m) && (m.season || '?') === s && (!m.type || /^saison/i.test(String(m.type))));
                     const ms = done.filter(m => (m.season || '?') === s);
                     const tab = {};
-                    ms.forEach(m => { const th = m.homeTeam || '?', ta = m.awayTeam || '?';
+                    allDone.forEach(m => { const th = m.homeTeam || '?', ta = m.awayTeam || '?';
                         tab[th] = tab[th] || { team: th, pts: 0, diff: 0 };
                         tab[ta] = tab[ta] || { team: ta, pts: 0, diff: 0 };
                         tab[th].pts += matchPoints(Number(m.scoreHome) || 0, Number(m.scoreAway) || 0, m.isProl);
@@ -3159,7 +3202,7 @@
                     const ir = ordered.findIndex(r => normalize(r.team).includes('valence'));
                     byS[s].rank = ir >= 0 ? ir + 1 : null;
                     const divs = [...new Set(ms.map(m => m.division).filter(Boolean))];
-                    byS[s].div = divs.length ? divs.join(', ') : '—';
+                    byS[s].div = (getFormat(s) || {}).division || (divs.length ? divs.join(', ') : '—');
                     const phases = new Set();
                     ms.filter(m => m.type && m.type !== 'Saison').forEach(m => {
                         const t = String(m.type);
@@ -3170,7 +3213,10 @@
                         else if (/final/i.test(t)) { const my = isL(m) ? (Number(gf(m)) > Number(ga(m))) : (Number(ga(m)) > Number(gf(m))); if (my && isMatchFinished(m)) phases.add('🏆 Champion'); else phases.add('Finale'); }
                         else if (/playoff/i.test(t)) phases.add('Playoffs');
                     });
-                    byS[s].phases = [...phases].sort((x, y) => (x === '🏆 Champion' ? -1 : y === '🏆 Champion' ? 1 : 0));
+                    // v2.22 : on n'affiche que le MEILLEUR tour atteint (Champion > Finale > 1/2 > 1/4 > 1/8 > Playoffs > Maintien)
+                    const ordrePh = ['🏆 Champion', 'Finale', '1/2', '1/4', '1/8', 'Playoffs', 'Maintien'];
+                    const bestPhase = ordrePh.find(p => phases.has(p));
+                    byS[s].phases = bestPhase ? [bestPhase] : [];
                 });
                 const fmtM = (m) => `${isL(m) ? 'vs' : '@'} ${xmlEsc(isL(m) ? m.awayTeam : m.homeTeam)} <b class="tabular-nums">${gf(m)}-${ga(m)}</b>${m.isProl ? ' (ap)' : ''} <span class="text-gray-400 font-normal">— ${new Date(m.date).toLocaleDateString('fr-FR')}</span>`;
                 el.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -3180,7 +3226,7 @@
                 </div>
                 <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="ranking-header"><th class="p-2">Saison</th><th class="p-2 text-center">Div</th><th class="p-2 text-center">Rang</th><th class="p-2 text-center">MJ</th><th class="p-2 text-center">V</th><th class="p-2 text-center">N</th><th class="p-2 text-center">D</th><th class="p-2 text-center">Pts</th><th class="p-2">Phases</th></tr></thead><tbody>
                 ${seasons.map(s => `<tr class="border-t border-gray-100 dark:border-gray-700/60"><td class="p-2 font-bold">${s === activeSeason ? xmlEsc(s) + ' 🦁' : xmlEsc(s)}</td><td class="p-2 text-center text-xs">${xmlEsc(byS[s].div)}</td><td class="p-2 text-center font-bold tabular-nums">${byS[s].rank ? byS[s].rank + (byS[s].rank === 1 ? 'ᵉʳ' : 'e') : '—'}</td><td class="p-2 text-center tabular-nums">${byS[s].mj}</td><td class="p-2 text-center text-green-600 font-bold tabular-nums">${byS[s].v}</td><td class="p-2 text-center tabular-nums">${byS[s].n}</td><td class="p-2 text-center text-red-500 font-bold tabular-nums">${byS[s].d}</td><td class="p-2 text-center font-black tabular-nums">${byS[s].pts}</td><td class="p-2 text-xs">${byS[s].phases.length ? xmlEsc(byS[s].phases.join(' · ')) : '—'}</td></tr>`).join('')}
-                </tbody></table></div><p class="text-[10px] text-gray-400 text-center mt-2">Rang = classement en saison régulière calculé depuis les matchs de la saison en base · Phases = tours de playoffs/maintien détectés dans le calendrier (Finale remportée = 🏆) · la division n'est pas enregistrée dans les données actuelles : la colonne se remplira dès qu'un import la précise.</p>`;
+                </tbody></table></div><p class="text-[10px] text-gray-400 text-center mt-2">Rang = classement en saison régulière calculé depuis TOUS les matchs de la saison en base · Phases = meilleur tour atteint (Finale remportée = 🏆) · Div = division du format de saison (Admin → Format de la saison), sinon celle des matchs importés.</p>`;
             } catch (e) { el.innerHTML = ''; }
         }
 
@@ -7178,7 +7224,7 @@ ${cards}
                     } catch (e) {}
                     const txt = await aiCompose(
                         `Demande de l'administrateur du site des Lynx de Valence : « ${ask} »\n\nDonnées internes du site (SEULE source autorisée pour les faits hockey — n'invente aucun joueur, score ou résultat absent de ce message) :\n${ctx || 'aucune donnée de match disponible'}`,
-                        `Tu es le rédacteur du site officiel des Lynx de Valence (hockey sur glace, France). Rédige l'article demandé, en français, dans un ton adapté au site d'un club, en Markdown sans titre ni heading. RÈGLE ABSOLUE — AUCUNE INVENTION : n'invente aucun nom de joueur, score, date ou statistique qui ne figure pas dans les données fournies ; si la demande porte sur un sujet hors données (événement de club, annonce, portrait sans stats…), rédige-le de façon sobre et générique sans rien inventer. 100 à 250 mots.\n\n${PRESS_RULES}`
+                        `Tu es le rédacteur du site officiel des Lynx de Valence (hockey sur glace, France). Rédige l'article demandé, en français, ton sobre de site de club, en Markdown sans titre ni heading.\nRÈGLE ABSOLUE — AUCUNE INVENTION :\n- N'écris JAMAIS un nom de joueur, un score, une date, un adversaire, un lieu ou un classement qui ne figure pas mot pour mot dans les données fournies.\n- Ne décris JAMAIS le déroulé d'un match (buts, tiers, temps forts, ambiance, « domination », « contre-attaque ») : tu n'as assisté à aucun match et les données ne contiennent pas de déroulé — écrire « X a dominé le premier tiers » est une invention même sans chiffre.\n- Si la demande porte sur un match ou un sujet absent des données, écris-le clairement (« le site n'a pas encore de données détaillées sur ce match ») et reste strictement sur ce qui est fourni — n'essaie jamais de combler le vide.\n- N'écris jamais au nom d'un groupe (« les supporters évoquent… », « l'équipe souhaite… ») : personne ne t'a cité.\n- 100 à 250 mots.\n\n${PRESS_RULES}`
                     );
                     const content = (txt || '').trim() || '';
                     btnGenCustom.disabled = false; btnGenCustom.textContent = '✨ Générer avec l\'IA (brouillon corrigeable)';
