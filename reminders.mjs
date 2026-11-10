@@ -10,7 +10,7 @@ const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://gedebelcho7.github.io/lynx-feed/app/"; // l'app, servie par GitHub Pages (dossier app/ du dépôt lynx-feed)
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // racine Pages du dépôt lynx-feed — l'URL où vivent feed.xml et actus.html
-const KIT_VERSION = "2.17"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
+const KIT_VERSION = "2.21"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -608,6 +608,30 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   const heure = (iso) => { const h = new Date(iso).toLocaleTimeString("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }); return h === "00:00" ? "~20h00" : h; };
   const card = "bg-gray-900/80 border border-gray-800 rounded-2xl p-5";
   const secH = (icon, txt) => `<h2 class="font-black text-xl mb-3"><span class="text-lynx-red">${icon}</span> ${txt}</h2>`;
+  // v2.21 : heatmap des buts par tranche de 10 min (mêmes données que l'app — rapports live)
+  const timingBuckets = Array.from({ length: 7 }, () => ({ f: 0, c: 0 }));
+  let timingGames = 0;
+  (Array.isArray(liveReports) ? liveReports : []).filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason))).forEach(r => {
+    const lh = /valence/i.test(r.homeTeam || "");
+    if (!lh && !/valence/i.test(r.awayTeam || "")) return;
+    timingGames++;
+    (r.events || []).forEach(e => { if (!e || e.ty !== "BUT" || !e.time) return; const mm = String(e.time).match(/(\d+)/); if (!mm) return;
+      const b = Math.max(0, Math.min(6, Math.floor(Number(mm[1]) / 10)));
+      timingBuckets[b][(e.side === "H") === lh ? "f" : "c"]++; });
+  });
+  const timingTot = timingBuckets.reduce((s, b) => s + b.f + b.c, 0);
+  let timingSec = "";
+  if (timingTot) {
+    const maxT = Math.max(1, ...timingBuckets.map(b => Math.max(b.f, b.c)));
+    const bar = (v, cls) => `<div class="h-14 flex items-end"><div class="${cls} rounded-t w-full" style="height:${Math.max(4, Math.round(v * 100 / maxT))}%"></div></div>`;
+    timingSec = `<section class="${card} scroll-mt-20" id="timing">
+      ${secH("⏱️", "Quand les Lynx marquent")}
+      <p class="mb-2 text-xs text-gray-500">Buts par tranche de 10 minutes, sur les ${timingGames} match(s) suivis en direct cette saison.</p>
+      <div class="grid grid-cols-7 gap-1 text-center">${timingBuckets.map((b, i) => `<div>${bar(b.f, "bg-lynx-red/80")}<div class="text-[10px] text-gray-500 mt-1">${i * 10}-${i * 10 + 10}'</div></div>`).join("")}</div>
+      <div class="grid grid-cols-7 gap-1 text-center mt-1">${timingBuckets.map(b => `<div>${bar(b.c, "bg-blue-500/70")}</div>`).join("")}</div>
+      <p class="mt-2 text-[11px] text-gray-500">Rouge = buts des Lynx · bleu = buts adverses</p>
+    </section>`;
+  }
   // 🔴 v2.17 : score live sur la page publique — le navigateur lit settings/live-state (API REST Firestore)
   // puis le flux live FFHG (poll 60 s) : score et dernier but en direct pour tout le monde,
   // sans commit GitHub ni déploiement supplémentaire. La page s'auto-désactive hors match.
@@ -690,12 +714,30 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
   }
   let rankSec = "";
   if (rrows.length && idx >= 0) {
+  // v2.21 : nombre magique — points restants pour être mathématiquement en playoffs (top 8 en D2, top 12 en D1)
+  let magicTxt = "";
+  if (rrows && rrows.length) {
+    try {
+      const poSpots = seasonHasPoulesKit(matches, activeSeason) ? 8 : 12;
+      const srt = [...rrows].sort((x, y) => Number(y.pts) - Number(x.pts));
+      const li = srt.findIndex(r => /valence/i.test(r.team || ""));
+      if (li >= 0 && srt.length > poSpots) {
+        const cut = srt[poSpots];
+        const rem = Math.max(0, (srt.length - 1) * 2 - Number(cut.mj || 0));
+        const magic = Number(cut.pts) + rem * 3 - Number(srt[li].pts) + 1;
+        magicTxt = magic > 0
+          ? `<p class="mt-2 text-xs text-gray-400">🎯 Nombre magique : <b class="text-gray-200">${magic}</b> — ${magic} point(s) de plus et les playoffs sont mathématiquement assurés (top ${poSpots} qualifiés).</p>`
+          : `<p class="mt-2 text-xs text-green-400">🎯 Les playoffs sont mathématiquement assurés ✅</p>`;
+      }
+    } catch (e) {}
+  }
     rankSec = `<section class="${card} scroll-mt-20" id="classement">
       ${secH("🏆", "Classement" + (seasonHasPoulesKit(matches, activeSeason) && poule ? " — poule " + esc(poule) : ""))}
       <table class="w-full text-sm"><thead><tr class="text-xs uppercase text-gray-500"><th class="px-2 py-1 text-left">#</th><th class="px-2 py-1 text-left">Équipe</th><th class="px-2 py-1 text-right">Pts</th><th class="px-2 py-1 text-right">Diff</th></tr></thead><tbody>
       ${rrows.map((r, i) => { const lx = /valence/i.test(r.team || ""); const isOpp = !!oppName && sameName(r.team, oppName); const bp = Number(r.bp), bc = Number(r.bc); const diff = isFinite(bp) && isFinite(bc) ? bp - bc : null; return `<tr class="${lx ? "bg-lynx-red/10" : isOpp ? "bg-blue-500/10" : ""} border-t border-gray-800"><td class="px-2 py-1.5 text-gray-500">${i + 1}${i !== idx && Math.abs(i - idx) <= 2 ? " ⚔️" : ""}</td><td class="px-2 py-1.5 font-semibold ${lx ? "text-lynx-red" : isOpp ? "text-blue-400" : ""}">${esc(r.team)}${lx ? " 🦁" : isOpp ? " 🔵" : ""}</td><td class="px-2 py-1.5 text-right font-black">${esc(String(Number(r.pts) || 0))}</td><td class="px-2 py-1.5 text-right text-gray-400">${diff === null ? "—" : (diff > 0 ? "+" : "") + diff}</td></tr>`; }).join("")}
       </tbody></table>
       <p class="mt-2 text-xs text-gray-500">🦁 Lynx de Valence${oppName ? " · 🔵 " + esc(oppName) + " (prochain adversaire)" : ""} · ⚔️ concurrents directs</p>
+      ${magicTxt}
     </section>`;
   }
   let statsSec = "";
@@ -803,6 +845,9 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
     upSec = `<section class="${card} md:col-span-2 scroll-mt-20" id="cal">
       ${secH("📅", "Prochains matchs")}
       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">${upcoming.slice(0, 6).map(m => { const ih = /valence/i.test(m.homeTeam || ""); const opp = ih ? m.awayTeam : m.homeTeam; return `<div class="bg-gray-950/60 rounded-xl px-3 py-2 text-sm"><span class="text-gray-400">${esc(jourFr(m.date))}</span> · ${heure(m.date)}<br><strong>${esc(opp)}</strong> <span class="text-xs text-gray-500">${ih ? "domicile" : "extérieur"}</span></div>`; }).join("")}</div>
+      <details class="mt-3"><summary class="cursor-pointer text-sm text-lynx-red font-semibold">Tout le calendrier des Lynx (${played.length} joué(s) · ${upcoming.length} à venir)</summary>
+        <div class="mt-2 space-y-1">${upcoming.map(m => { const ih = /valence/i.test(m.homeTeam || ""); const opp = ih ? m.awayTeam : m.homeTeam; return `<div class="flex justify-between text-sm bg-gray-950/60 rounded-lg px-3 py-1.5"><span>${esc(jourFr(m.date))} · ${esc(opp)} <span class="text-xs text-gray-500">${ih ? "(domicile)" : "(extérieur)"}</span></span><span class="text-gray-500">à venir</span></div>`; }).join("")}${[...played].reverse().map(m => { const ih = /valence/i.test(m.homeTeam || ""); const opp = ih ? m.awayTeam : m.homeTeam; const [my, op2] = [ih ? Number(m.scoreHome) : Number(m.scoreAway), ih ? Number(m.scoreAway) : Number(m.scoreHome)]; return `<div class="flex justify-between text-sm text-gray-400 rounded-lg px-3 py-1.5"><span>${esc(jourFr(m.date))} · ${esc(opp)}</span><span class="${my > op2 ? "text-green-400" : my < op2 ? "text-red-400" : ""}">${my}-${op2}${m.isProl ? " (ap)" : ""}</span></div>`; }).join("")}</div>
+      </details>
     </section>`;
   }
   const actus = (Array.isArray(news) ? news : []).filter(n => n && n.title && n.date).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
@@ -834,7 +879,7 @@ async function buildHomePage(matches, roster, leaguePlayers, goalies, rankings, 
 </header>
 <main class="max-w-5xl mx-auto px-4 py-6 grid md:grid-cols-2 gap-5 pb-10">
 ${hero || `<section class="${card} md:col-span-2"><p class="text-gray-400">Le calendrier de la saison n'est pas encore disponible — il s'importera automatiquement depuis l'app.</p></section>`}
-${formeSec}${advSec}${rankSec}${statsSec}${joueursSec}${pronoSec}${duelSec}${journeeSec}${upSec}${actusSec}
+${formeSec}${advSec}${rankSec}${statsSec}${timingSec}${joueursSec}${pronoSec}${duelSec}${journeeSec}${upSec}${actusSec}
 </main>
 <footer class="border-t border-gray-800 py-6 text-center text-xs text-gray-500">
   <p><a class="text-gray-300 hover:text-white" href="${esc(SITE_URL)}">L'app complète 🦁</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}feed.xml">Flux RSS</a> · <a class="text-gray-300 hover:text-white" href="${esc(FEED_URL)}actus.html">Toutes les actus</a></p>
@@ -870,27 +915,42 @@ async function ffhgLive(id) {
     return await r.text();
   } finally { clearTimeout(to); }
 }
-// 🪄 Détecte automatiquement le match de Valence du jour sur les pages live de la FFHG
-// (même logique que le bouton « Trouver le match du jour » du site). Retourne "" si aucun.
+// 🪄 Détecte automatiquement le match de Valence du jour via l'interface JSON de la FFHG
+// (get_rencontres — la même que celle appelée en arrière-plan par la page calendrier du site). Retourne "" si aucun.
+const FFHG_DIVS = [
+  { div: "D1", comp: 241, phase: 721 },
+  { div: "D2", comp: 198, phase: 567 }
+];
 async function liveDetectToday() {
-  const urls = ["https://www.hockeyfrance.com/competitions/page-live/", "https://www.hockeyfrance.com/competitions/live/"];
-  for (const u of urls) {
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 15000);
-    try {
-      const r = await fetch(u, { headers: { "User-Agent": "LynxBot/1.0" }, signal: ctrl.signal });
-      if (!r.ok) continue;
-      const html = await r.text();
-      const rx = /rencontre[\/=](\d{3,8})/g;
-      let m; const seen = new Set();
-      while ((m = rx.exec(html)) !== null) {
-        const id = m[1];
-        if (seen.has(id)) continue;
-        seen.add(id);
-        const around = html.slice(Math.max(0, m.index - 700), Math.min(html.length, m.index + 700));
-        if (/valence/i.test(around)) { clearTimeout(to); return id; }
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(d0.getTime() + 24 * 3600e3);
+  for (const d of FFHG_DIVS) {
+    for (let page = 1; page <= 8; page++) {
+      let j = null;
+      try {
+        const url = "https://www.hockeyfrance.com/competitions/wp-admin/admin-ajax.php?action=get_rencontres&page=" + page + "&equipe_id=&competition_id=" + d.comp + "&phase_id=" + d.phase + "&date_min=&date_max=&par_page=50&journee=&limite=0";
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 15000);
+        try {
+          const r = await fetch(url, { headers: { "User-Agent": "LynxBot/1.0" }, signal: ctrl.signal });
+          if (!r.ok) break;
+          j = JSON.parse(await r.text());
+        } finally { clearTimeout(to); }
+      } catch (e) { break; }
+      const arr = (j && j.data && Array.isArray(j.data.data)) ? j.data.data : [];
+      for (const r of arr) {
+        const dt = (r.calendrier && (r.calendrier.date_debut || r.calendrier.date_fin)) || r.date_rencontre || "";
+        if (!dt || !r.receveur || !r.visiteur) continue;
+        const t = new Date(dt.replace(" ", "T")).getTime();
+        if (!(t >= d0.getTime() && t < d1.getTime())) continue;
+        const rec = String((r.receveur.libelle_court || "") + " " + (r.receveur.libelle_complet || ""));
+        const vis = String((r.visiteur.libelle_court || "") + " " + (r.visiteur.libelle_complet || ""));
+        if (/valence/i.test(rec) || /valence/i.test(vis)) return String(r.id);
       }
-    } catch (e) {} finally { clearTimeout(to); }
+      const meta = (j && j.data && j.data.meta) || {};
+      const per = Number(meta.per_page) || 50;
+      if (!arr.length || arr.length < per) break;
+    }
   }
   return "";
 }
@@ -1148,6 +1208,45 @@ async function ticketCheck(subs) {
   return { seen: seen.length, added, future, at: new Date().toISOString() };
 }
 
+// v2.21 : DIGEST HEBDO — une seule notification en début de semaine (lundi–mercredi) : résultat, classement, prochain match.
+async function weeklyDigest(matches, rankings, subs, activeSeason) {
+  const targets = subs.filter(s => !s.prefs || s.prefs.articles !== false);
+  if (!targets.length || !VAPID_PRIVATE_KEY) return;
+  const now = new Date();
+  const wk = now.getUTCFullYear() + "-w" + Math.floor((now - new Date(now.getUTCFullYear(), 0, 1)) / (7 * 24 * 3600e3));
+  const dow = now.getDay(); // 0 = dimanche, 1 = lundi
+  if (dow < 1 || dow > 3) return; // on n'envoie que lundi, mardi ou mercredi
+  const st = await getDoc("settings", "digest-state").catch(() => null);
+  if (st && st.week === wk) return; // déjà envoyé cette semaine
+  const played = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const upcoming = matches.filter(m => m.season === activeSeason && isLynxMatch(m) && !isFinished(m)).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const lines = [];
+  const last = played[played.length - 1];
+  if (last) {
+    const ih = /valence/i.test(last.homeTeam || "");
+    const my = ih ? Number(last.scoreHome) : Number(last.scoreAway), op = ih ? Number(last.scoreAway) : Number(last.scoreHome);
+    lines.push((my > op ? "✅ Victoire " : my < op ? "❌ Défaite " : "➖ Nul ") + my + "-" + op + " contre " + (ih ? last.awayTeam : last.homeTeam) + (last.isProl ? " (ap)" : ""));
+  }
+  const rs = (Array.isArray(rankings) ? rankings : []).filter(r => r && (!r.season || String(r.season) === String(activeSeason)) && r.team);
+  for (const poule of ["A", "B"]) {
+    const rows = sortRankFFHG(rs.filter(r => (r.poule || "A") === poule), matches, activeSeason);
+    const idx = rows.findIndex(r => /valence/i.test(r.team || ""));
+    if (idx >= 0) { lines.push("📍 " + (idx + 1) + (idx === 0 ? "er" : "e") + " au classement, " + rows[idx].pts + " pts"); break; }
+  }
+  const nx = upcoming[0];
+  if (nx) lines.push("🔜 Prochain match : " + nx.homeTeam + " - " + nx.awayTeam + ", " + jourFr(nx.date));
+  if (!lines.length) return;
+  const webpush = (await import("web-push")).default;
+  webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  let ok = 0;
+  for (const s of targets) {
+    try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🦁 La semaine des Lynx", body: lines.join("\n"), url: SITE_URL, tag: "digest_" + wk })); ok++; }
+    catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
+  }
+  await patchDoc("settings", "digest-state", { week: wk, sentAt: new Date().toISOString(), pushedTo: ok }).catch(() => {});
+  console.log("Digest hebdo poussé à " + ok + " abonné(s).");
+}
+
 async function main() {
   const now = Date.now();
   const [matches, subs, news, rankings, roster, leaguePlayers, goalies, liveReports, existingExt, settings] = await Promise.all([
@@ -1277,9 +1376,11 @@ async function main() {
   // 4bis) STATS DE LA SEMAINE → aussi en article du site (badge 📈, un doc par semaine) : ce qui est dans le flux public est visible dans Actus
   // ⚠️ la date reste celle de la PREMIÈRE publication de la semaine — la réécrire à chaque cycle faisait croire au push « nouvel article » que l'article était nouveau → re-notification ~toutes les heures
   // ⚠️ v2.17 : patch SEULEMENT si le contenu change (le bloc tourne désormais à chaque run, plus seulement en cycle complet)
-  if (statsItem) { try { const exStats = (news || []).find(n => String(n.id || "") === String(statsItem.guid)); if (!exStats || exStats.title !== statsItem.title || exStats.content !== statsItem.description) await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: exStats && exStats.date ? exStats.date : statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
+  if (statsItem) { try { const acSt = await getDoc("settings", "article-controls").catch(() => null); const lkSt = !!(acSt && acSt.stats && Number(acSt.stats.lockUntil) > Date.now()); const exStats = (news || []).find(n => String(n.id || "") === String(statsItem.guid)); if (!lkSt && (!exStats || exStats.title !== statsItem.title || exStats.content !== statsItem.description)) await patchDoc("news", statsItem.guid, { title: statsItem.title, content: statsItem.description, date: exStats && exStats.date ? exStats.date : statsItem.date, auto: true, kind: "stats" }); } catch (e) { console.warn("Stats en article : " + (e && e.message ? e.message : e)); } }
   // 5) PUSH « NOUVEL ARTICLE » (selon les préférences de chaque appareil ; non bloquant)
   try { await articlePush(news, subs); } catch (e) { console.warn("Push articles : " + (e && e.message ? e.message : e)); }
+  // 5bis) DIGEST HEBDO (une seule notif par semaine, lundi–mercredi ; non bloquant)
+  try { await weeklyDigest(matches, rankings, subs, activeSeason); } catch (e) { console.warn("Digest hebdo : " + (e && e.message ? e.message : e)); }
   // 6) DOC DE SANTÉ : ce que l'Admin → Diagnostic de l'affiche affiche (les champs RSS/billetterie ne sont écrasés qu'en cycle complet)
   try {
     const hFields = { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: doCollect ? "complet (RSS + billetterie)" : "rapide (page + articles)", subsCount: subs.length, feedItems: feedCount };
