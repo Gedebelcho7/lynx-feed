@@ -3254,10 +3254,12 @@
         }
 
         let calFilters = { ta: '', tb: '', when: 'all', scope: 'all' };
+        // v2.22 : sMatches est LOCAL à la fonction de rendu — les filtres doivent passer par la globale allMatches
+        const calSeasonMs = () => (allMatches || []).filter(m => m.season === activeSeason);
         function fillCalTeams() {
             const a = document.getElementById('cal-team-a'), b = document.getElementById('cal-team-b');
             if (!a || !b) return;
-            const teams = [...new Set((sMatches || []).flatMap(m => [m.homeTeam, m.awayTeam]).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'fr'));
+            const teams = [...new Set(calSeasonMs().flatMap(m => [m.homeTeam, m.awayTeam]).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'fr'));
             const cur = { a: a.value, b: b.value };
             const opts = (sel) => '<option value="">Toutes les équipes</option>' + teams.map(t => `<option value="${xmlEsc(t)}"${t === sel ? ' selected' : ''}>${xmlEsc(t)}</option>`).join('');
             a.innerHTML = opts(cur.a); b.innerHTML = opts(cur.b);
@@ -3265,11 +3267,11 @@
         function initCalSearch() {
             const a = document.getElementById('cal-team-a'), b = document.getElementById('cal-team-b'), w = document.getElementById('cal-when'), s = document.getElementById('cal-scope'), r = document.getElementById('cal-search-reset');
             if (!a || a.dataset.wired) return; a.dataset.wired = '1';
-            if (a) a.onchange = () => { calFilters.ta = a.value; try { renderFullCal(sMatches); } catch (e) {} };
-            if (b) b.onchange = () => { calFilters.tb = b.value; try { renderFullCal(sMatches); } catch (e) {} };
-            if (w) w.onchange = () => { calFilters.when = w.value; try { renderFullCal(sMatches); } catch (e) {} };
-            if (s) s.onchange = () => { calFilters.scope = s.value; try { renderFullCal(sMatches); } catch (e) {} };
-            if (r) r.onclick = () => { calFilters = { ta: '', tb: '', when: 'all', scope: 'all' }; if (a) a.value = ''; if (b) b.value = ''; if (w) w.value = 'all'; if (s) s.value = 'all'; try { renderFullCal(sMatches); } catch (e) {} };
+            if (a) a.onchange = () => { calFilters.ta = a.value; try { renderFullCal(calSeasonMs()); } catch (e) {} };
+            if (b) b.onchange = () => { calFilters.tb = b.value; try { renderFullCal(calSeasonMs()); } catch (e) {} };
+            if (w) w.onchange = () => { calFilters.when = w.value; try { renderFullCal(calSeasonMs()); } catch (e) {} };
+            if (s) s.onchange = () => { calFilters.scope = s.value; try { renderFullCal(calSeasonMs()); } catch (e) {} };
+            if (r) r.onclick = () => { calFilters = { ta: '', tb: '', when: 'all', scope: 'all' }; if (a) a.value = ''; if (b) b.value = ''; if (w) w.value = 'all'; if (s) s.value = 'all'; try { renderFullCal(calSeasonMs()); } catch (e) {} };
         }
 
         function renderFullCal(list) {
@@ -7260,10 +7262,27 @@ ${cards}
                                 ctx += 'Scénarios calculés par le site pour les 10 prochains jours (modèle interne — chiffres exacts, reprends-les tels quels si tu les cites) :\n' + sc.list.map(fmtSc).map(x => '- ' + x).join('\n') + '\n';
                             }
                         } catch (e) {}
+                        // v2.22 : classement du site (position, points, forme) autour des Lynx — pour une vraie analyse
+                        try {
+                            const csvC = seasonHasPoules(activeSeason) ? rankingA : [...rankingA, ...rankingB];
+                            const rkC = sortRankFFHG(computeLiveRanking(activeSeason, 'B', csvC.filter(r => r.season === activeSeason)), activeSeason);
+                            const iL = rkC.findIndex(t => normalize(t.team).includes('valence'));
+                            if (iL >= 0) {
+                                const fFr = (f) => (f || '').split('').map(c => c === 'V' ? 'victoire' : c === 'D' ? 'défaite' : c === 'v' ? 'victoire (ap)' : c === 'd' ? 'défaite (ap)' : 'nul').join('-');
+                                const around = rkC.slice(Math.max(0, iL - 2), iL + 3).map((t, k) => `${Math.max(0, iL - 2) + k + 1}. ${t.team} (${t.pts} pts, ${t.mj} MJ, forme : ${fFr(t.form) || '—'})`).join(' · ');
+                                ctx += `Classement (extrait autour des Lynx) : ${around}.\n`;
+                            }
+                        } catch (e) {}
+                        // v2.22 : actus presse récentes (≤ 8 jours) — échos externes, à citer avec leur source seulement
+                        try {
+                            const cutP = Date.now() - 8 * 24 * 3600e3;
+                            const prI = (rssItems || []).filter(i => i && i.title && new Date(i.pubDate).getTime() >= cutP).slice(0, 6);
+                            if (prI.length) ctx += 'Actus presse récentes (échos externes — mentionne-les seulement avec leur source, jamais comme des faits vérifiés par le site) :\n' + prI.map(i => `- « ${i.title} » (${i.source || 'source inconnue'})`).join('\n') + '\n';
+                        } catch (e) {}
                     } catch (e) {}
                     const txt = await aiCompose(
                         `Demande de l'administrateur du site des Lynx de Valence : « ${ask} »\n\nDonnées internes du site (SEULE source autorisée pour les faits hockey — n'invente aucun joueur, score ou résultat absent de ce message) :\n${ctx || 'aucune donnée de match disponible'}`,
-                        `Tu es le rédacteur du site officiel des Lynx de Valence (hockey sur glace, France). Rédige l'article demandé, en français, ton sobre de site de club, en Markdown sans titre ni heading.\nRÈGLE ABSOLUE — AUCUNE INVENTION :\n- N'écris JAMAIS un nom de joueur, un score, une date, un adversaire, un lieu ou un classement qui ne figure pas mot pour mot dans les données fournies.\n- Ne décris JAMAIS le déroulé d'un match (buts, tiers, temps forts, ambiance, « domination », « contre-attaque ») : tu n'as assisté à aucun match et les données ne contiennent pas de déroulé — écrire « X a dominé le premier tiers » est une invention même sans chiffre.\n- Si la demande porte sur un match ou un sujet absent des données, écris-le clairement (« le site n'a pas encore de données détaillées sur ce match ») et reste strictement sur ce qui est fourni — n'essaie jamais de combler le vide.\n- N'écris jamais au nom d'un groupe (« les supporters évoquent… », « l'équipe souhaite… ») : personne ne t'a cité.\n- 100 à 250 mots.\n\n${PRESS_RULES}`
+                        `Tu es le journaliste du site officiel des Lynx de Valence (hockey sur glace, France). Rédige l'article demandé, en français, en Markdown sans titre ni heading, sous forme d'un VRAI article de site de club : une accroche sur l'enjeu, puis une analyse appuyée sur les chiffres fournis (forme, classement, scénarios et leurs probabilités, points attendus), ce qui arrangerait ou pénaliserait les Lynx dans les prochains jours (interprète les scénarios : quelle combinaison de résultats leur est favorable, à quelles conditions), et une courte conclusion tournée vers la suite. Interprète, compare, déduis les enjeux — mais n'ajoute AUCUN fait extérieur aux données.\nRÈGLES — AUCUNE INVENTION :\n- Tous les faits (scores, dates, adversaires, joueurs, classements, probabilités) viennent UNIQUEMENT des données fournies ; reprends les chiffres exacts.\n- Reste sur la saison en cours, sauf si la demande concerne explicitement l'historique — n'évoque JAMAIS la saison précédente ou les saisons passées de ta propre initiative.\n- Ne décris jamais le déroulé d'un match (buts, tiers, temps forts, ambiance, « domination ») : les données ne contiennent pas de déroulé.\n- N'attribue jamais de parole à qui que ce soit (« les supporters évoquent… », « le staff souhaite… », « l'équipe veut… ») : personne ne t'a cité. Seuls les items de presse fournis peuvent être mentionnés, avec leur source (« selon le Dauphiné »).\n- Si une information manque, ne comble JAMAIS le vide : passe à autre chose ou dis-le simplement.\n- 200 à 400 mots.\n\n${PRESS_RULES}`
                     );
                     const content = (txt || '').trim() || '';
                     btnGenCustom.disabled = false; btnGenCustom.textContent = '✨ Générer avec l\'IA (brouillon corrigeable)';
