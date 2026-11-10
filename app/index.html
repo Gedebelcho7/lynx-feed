@@ -465,7 +465,9 @@
             <div class="mb-4 text-xs text-gray-500 bg-blue-50 dark:bg-blue-900/20 p-2 rounded flex items-center"><i class="fa-solid fa-info-circle mr-2 text-blue-500"></i> Cliquez sur N'IMPORTE quel match pour entrer le score. Les matchs des Lynx sont en surbrillance.</div>
             
             <div class="mb-4 flex flex-wrap gap-2 items-center bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-3 rounded-xl shadow-lg">
-                <input id="cal-search" class="flex-1 min-w-[180px] p-2.5 border rounded-xl dark:bg-gray-700 text-sm" placeholder="🔍 Chercher une équipe (ex. Nantes)…">
+                <select id="cal-team-a" class="flex-1 min-w-[150px] p-2.5 border rounded-xl dark:bg-gray-700 text-sm font-bold"><option value="">Équipe 1 — toutes</option></select>
+                <span class="text-xs font-black text-gray-400">VS</span>
+                <select id="cal-team-b" class="flex-1 min-w-[150px] p-2.5 border rounded-xl dark:bg-gray-700 text-sm font-bold"><option value="">Équipe 2 — toutes</option></select>
                 <select id="cal-when" class="p-2.5 border rounded-xl dark:bg-gray-700 text-sm font-bold">
                     <option value="all">Tous les matchs</option>
                     <option value="upcoming">À venir</option>
@@ -993,6 +995,7 @@
             <label class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 mb-2 cursor-pointer"><input id="chk-pref-articles" type="checkbox" class="w-5 h-5 accent-red-600" checked><span class="text-sm font-bold">📰 Nouveaux articles<span class="block text-xs font-normal text-gray-500">Résultats, pronostics et articles du site</span></span></label>
             <label class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 mb-2 cursor-pointer"><input id="chk-pref-actus" type="checkbox" class="w-5 h-5 accent-red-600" checked><span class="text-sm font-bold">🗞️ Actus presse<span class="block text-xs font-normal text-gray-500">Les actus des autres sites (RSS), filtrées par les mots-clés du site</span></span></label>
             <label class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 mb-2 cursor-pointer"><input id="chk-pref-ticket" type="checkbox" class="w-5 h-5 accent-red-600" checked><span class="text-sm font-bold">🎟️ Billetterie<span class="block text-xs font-normal text-gray-500">Alerte dès qu'un match est mis en vente</span></span></label>
+            <label class="flex items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 mb-2 cursor-pointer"><input id="chk-pref-digest" type="checkbox" class="w-5 h-5 accent-amber-600"><span class="text-sm font-bold">📬 Résumé hebdo seulement<span class="block text-xs font-normal text-gray-500">Mode silencieux : une seule notification par semaine (la semaine des Lynx), rien d'autre — ni buts, ni articles, ni rappels</span></span></label>
             <div class="flex gap-2 mt-4">
                 <button id="btn-save-notif-prefs" class="btn-primary flex-1 py-3 rounded-xl text-sm font-bold">Enregistrer</button>
                 <button id="btn-close-notif-prefs" class="px-4 py-3 rounded-xl text-sm font-bold border border-gray-300 dark:border-gray-600">Fermer</button>
@@ -1118,7 +1121,8 @@
             <button id="close-news-edit-modal" class="absolute top-3 right-3 text-3xl text-gray-400 hover:text-lynx-red p-2">&times;</button>
             <h3 class="text-xl font-black mb-4">✏️ Modifier l'article</h3>
             <input id="news-edit-title" class="w-full p-3 border rounded-xl dark:bg-gray-700 font-bold mb-3" placeholder="Titre">
-            <textarea id="news-edit-content" class="w-full p-3 border rounded-xl dark:bg-gray-700 h-48 text-sm mb-4" placeholder="Contenu (Markdown)"></textarea>
+            <textarea id="news-edit-content" class="w-full p-3 border rounded-xl dark:bg-gray-700 h-48 text-sm mb-2" placeholder="Contenu (Markdown)"></textarea>
+            <div id="news-verify-panel" class="mb-4 text-xs"></div>
             <input id="news-edit-tags" class="w-full p-3 border rounded-xl dark:bg-gray-700 text-sm font-bold mb-4" placeholder="Hashtags — ex. #Victoire #LynxDeValence (tri sur le site + partage réseaux)">
             <label class="block text-xs font-bold text-gray-500 mb-1">Date de l'article (facultatif — corrige la date d'affichage)</label>
             <input id="news-edit-date" type="date" class="w-full p-3 border rounded-xl dark:bg-gray-700 text-sm mb-4">
@@ -1333,7 +1337,7 @@
                 </div>
             </div>
 
-            <div id="tab-news" class="admin-tab-content space-y-4"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-4">Gérer les News</h3><form id="admin-news-form" class="space-y-3 border-b dark:border-gray-700 pb-4 mb-4"><input id="news-title" class="w-full p-2 border rounded dark:bg-gray-700 text-sm font-bold" placeholder="Titre" required><textarea id="news-content" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-24" placeholder="Contenu (Markdown)..." required></textarea><button type="submit" class="btn-primary w-full py-2 text-sm">Publier News</button></form><div class="flex gap-2 items-end border-b dark:border-gray-700 pb-4 mb-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">Hashtags par défaut (partage réseaux — articles &amp; presse)</label><input id="admin-share-tags" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700 font-bold" placeholder="#LynxDeValence #Hockey"></div><button id="btn-save-share-tags" class="btn-primary py-2 px-4 rounded text-sm font-bold whitespace-nowrap">Enregistrer</button></div><div class="border-b dark:border-gray-700 pb-4 mb-4"><div class="text-xs font-bold text-gray-500 mb-2">GÉNÉRATION AUTOMATIQUE</div><div class="grid grid-cols-2 md:grid-cols-3 gap-2"><button id="btn-gen-result-article" class="btn-primary py-2 text-sm">Article du dernier résultat</button><button id="btn-gen-preview-article" class="btn-primary py-2 text-sm bg-purple-600">Pronostic du prochain match</button><button id="btn-gen-month-article" class="btn-primary py-2 text-sm bg-amber-600">Récap du mois dernier</button><button id="btn-gen-poule-article" class="btn-primary py-2 text-sm bg-cyan-600">Panorama de la poule</button><button id="btn-export-rss" class="btn-primary py-2 text-sm bg-emerald-600">Exporter flux RSS (XML)</button><button id="btn-preview-rss" class="btn-primary py-2 text-sm bg-purple-500">Aperçu du flux</button><button id="btn-publish-rss" class="btn-primary py-2 text-sm bg-blue-600">Publier flux en ligne (GitHub)</button><button id="btn-check-gh-config" class="btn-primary py-2 text-sm bg-gray-600">Vérifier la config GitHub</button></div><p class="text-[10px] text-gray-400 mt-2 leading-relaxed">L'article de résultat est publié automatiquement dès que les données du match sont complètes : score saisi + stats joueurs à jour (ou match suivi en direct, le rapport live fait foi). Tant que les stats manquent, l'article attend ; il est publié au plus tard 48h après le match avec les infos disponibles. Le bouton « Article du dernier résultat » publie immédiatement — ou régénère l'article existant (avec confirmation) pour l'actualiser une fois les stats complètes. Le pronostic est publié automatiquement la veille du match (si le site est ouvert au moins une fois dans les 36h avant). Le récap mensuel sort au début de chaque mois (résultats, pronostics vérifiés, buteurs, classement, anticipation). Avec une clé Gemini renseignée, l'IA rédige à partir UNIQUEMENT des données du site (aucune invention possible) ; sans clé, un texte simple est généré. Le flux RSS exporté contient uniquement les actus du site (résultats, classements, pronostics des Lynx).</p><label class="flex items-center gap-2 mt-2 text-xs font-bold text-gray-500 cursor-pointer"><input id="chk-auto-publish-rss" type="checkbox" class="w-4 h-4 accent-red-600"> Publication automatique du flux en ligne dès qu'un article sort (l'app doit rester ouverte ; configure ghRssRepo + ghRssToken dans le code)</label><div id="rss-publish-status" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-1"></div></div><div id="admin-news-list" class="space-y-2 max-h-60 overflow-y-auto"></div></div></div>
+            <div id="tab-news" class="admin-tab-content space-y-4"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-4">Gérer les News</h3><form id="admin-news-form" class="space-y-3 border-b dark:border-gray-700 pb-4 mb-4"><input id="news-title" class="w-full p-2 border rounded dark:bg-gray-700 text-sm font-bold" placeholder="Titre" required><textarea id="news-content" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-24" placeholder="Contenu (Markdown)..." required></textarea><button type="submit" class="btn-primary w-full py-2 text-sm">Publier News</button></form><div class="flex gap-2 items-end border-b dark:border-gray-700 pb-4 mb-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">Hashtags par défaut (partage réseaux — articles &amp; presse)</label><input id="admin-share-tags" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700 font-bold" placeholder="#LynxDeValence #Hockey"></div><button id="btn-save-share-tags" class="btn-primary py-2 px-4 rounded text-sm font-bold whitespace-nowrap">Enregistrer</button></div><div class="border-b dark:border-gray-700 pb-4 mb-4"><div class="text-xs font-bold text-gray-500 mb-2">GÉNÉRATION AUTOMATIQUE</div><div class="grid grid-cols-2 md:grid-cols-3 gap-2"><button id="btn-gen-result-article" class="btn-primary py-2 text-sm">Article du dernier résultat</button><button id="btn-gen-preview-article" class="btn-primary py-2 text-sm bg-purple-600">Pronostic du prochain match</button><button id="btn-gen-month-article" class="btn-primary py-2 text-sm bg-amber-600">Récap du mois dernier</button><button id="btn-gen-poule-article" class="btn-primary py-2 text-sm bg-cyan-600">Panorama de la poule</button><button id="btn-export-rss" class="btn-primary py-2 text-sm bg-emerald-600">Exporter flux RSS (XML)</button><button id="btn-preview-rss" class="btn-primary py-2 text-sm bg-purple-500">Aperçu du flux</button><button id="btn-publish-rss" class="btn-primary py-2 text-sm bg-blue-600">Publier flux en ligne (GitHub)</button><button id="btn-check-gh-config" class="btn-primary py-2 text-sm bg-gray-600">Vérifier la config GitHub</button></div><label class="flex items-center gap-2 mt-2 text-xs font-bold text-gray-500 cursor-pointer"><input id="chk-draft-lock" type="checkbox" class="w-4 h-4 accent-amber-600" checked> Après publication d'un brouillon : verrouiller 7 jours ce type d'article (l'automatique ne refera pas un doublon — déverrouillable dans Dates &amp; verrous)</label><div class="border-t dark:border-gray-700 pt-3 mt-3"><div class="text-xs font-bold text-gray-500 mb-2">ARTICLE PERSONNALISÉ (IA)</div><textarea id="custom-article-prompt" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-16" placeholder="Sujet ou consigne — ex. « Portrait du gardien après ses 3 derniers matchs », « Annonce de la soirée des bénévoles »…"></textarea><button id="btn-gen-custom-article" class="btn-primary w-full py-2 text-sm bg-indigo-600 mt-2">✨ Générer avec l'IA (brouillon corrigeable)</button></div><p class="text-[10px] text-gray-400 mt-2 leading-relaxed">Les boutons génèrent un BROUILLON, jamais une publication directe : la fenêtre d'édition s'ouvre (titre, contenu, date, hashtags), tu corriges ce que tu veux puis « ✅ Publier » — ou tu fermes pour jeter le brouillon. L'article de résultat reste aussi publié automatiquement dès que les données du match sont complètes ; le pronostic la veille ; le récap mensuel au début du mois. Avec une clé Gemini renseignée, l'IA rédige à partir UNIQUEMENT des données du site (aucune invention possible) ; sans clé, un texte simple est généré. Le flux RSS exporté contient uniquement les actus du site (résultats, classements, pronostics des Lynx).</p><label class="flex items-center gap-2 mt-2 text-xs font-bold text-gray-500 cursor-pointer"><input id="chk-auto-publish-rss" type="checkbox" class="w-4 h-4 accent-red-600"> Publication automatique du flux en ligne dès qu'un article sort (l'app doit rester ouverte ; configure ghRssRepo + ghRssToken dans le code)</label><div id="rss-publish-status" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-1"></div></div><div id="admin-news-list" class="space-y-2 max-h-60 overflow-y-auto"></div></div></div>
             <div id="tab-context" class="admin-tab-content space-y-4"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-2">Contexte IA</h3><form id="admin-context-form" class="space-y-3 border-b dark:border-gray-700 pb-4 mb-4"><input id="context-title" class="w-full p-2 border rounded dark:bg-gray-700 text-sm font-bold" placeholder="Titre" required><textarea id="context-content" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-32" placeholder="Info pour l'IA..." required></textarea><button type="submit" class="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded font-bold text-sm">Ajouter</button></form><div id="admin-context-list" class="space-y-2 max-h-60 overflow-y-auto mb-4"></div><div class="pt-4 border-t dark:border-gray-700"><input type="file" id="csv-upload-context" class="border p-2 w-full text-sm bg-white dark:bg-gray-700 rounded"><button id="btn-upload-csv-context" class="btn-primary mt-2 text-sm w-full">Importer Contexte</button><div id="status-context" class="text-xs text-gray-500 mt-1"></div></div></div></div>
             <div id="tab-config" class="admin-tab-content"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-4"><h3 class="font-bold mb-2">Liens Utiles</h3><div id="admin-links-list" class="space-y-2 mb-4"></div><form id="form-add-link" class="flex gap-2 items-end border-t pt-4 dark:border-gray-700 mb-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">Nom</label><input id="link-name" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700" required></div><div class="flex-1"><label class="text-xs font-bold text-gray-500">URL</label><input id="link-url" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700" required></div><button type="submit" class="btn-primary py-2 px-4 rounded text-sm font-bold">Ajouter</button></form><div class="pt-4 border-t dark:border-gray-700"><input type="file" id="csv-upload-links" class="border p-2 w-full text-sm bg-white dark:bg-gray-700 rounded"><button id="btn-upload-csv-links" class="btn-primary mt-2 text-sm w-full">Importer Liens</button><div id="status-links" class="text-xs text-gray-500 mt-1"></div></div></div></div>
             <div id="tab-export" class="admin-tab-content space-y-4">
@@ -1593,7 +1597,7 @@
         };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const basePath = `/artifacts/${appId}/public/data`;
-        const APP_VERSION = "2.21"; // version du site — incrémenter à chaque déploiement (Admin → Diagnostic la compare à la version de l'action GitHub)
+        const APP_VERSION = "2.22"; // version du site — incrémenter à chaque déploiement (Admin → Diagnostic la compare à la version de l'action GitHub)
 
         // ===== WEB PUSH (notifications même site fermé, nécessite hébergement HTTPS + sw.js) =====
         const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
@@ -2084,63 +2088,111 @@
                 if (pos0 < 0) { el.innerHTML = ''; return; }
                 const now = Date.now(), horizon = now + 10 * 24 * 3600e3;
                 const rivals = new Set(base.slice(Math.max(0, pos0 - 4), pos0 + 5).map(t => normalize(t.team)));
+                const inWin = (m) => (new Date(m.date).getTime() || 0) > now - 6 * 3600e3 && (new Date(m.date).getTime() || 0) < horizon;
                 const up = (matches || []).filter(m => m.season === activeSeason && (!m.type || m.type === 'Saison') && !isMatchFinished(m)
-                    && (new Date(m.date).getTime() || 0) > now - 6 * 3600e3 && (new Date(m.date).getTime() || 0) < horizon
+                    && inWin(m)
                     && !(normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence'))
                     && (rivals.has(normalize(m.homeTeam)) || rivals.has(normalize(m.awayTeam))))
                     .sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 6);
-                if (!up.length) { el.innerHTML = ''; return; }
+                const lynxNext = (matches || []).filter(m => m.season === activeSeason && (!m.type || m.type === 'Saison') && !isMatchFinished(m)
+                    && inWin(m)
+                    && (normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence')))
+                    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+                if (!up.length && !lynxNext) { el.innerHTML = ''; return; }
                 const lynxPos = (rows) => { const s = sortRankFFHG(rows.map(r => ({ ...r })), activeSeason); const i = s.findIndex(t => normalize(t.team).includes('valence')); return i >= 0 ? i + 1 : null; };
-                const rows = up.map(m => {
+                const rows = [];
+                if (lynxNext) {
+                    // v2.22 : le prochain match des Lynx aussi — les 4 issues (barème FFHG : V = 3, V ap = 2, D ap = 1, D = 0)
+                    const addLynx = (n) => { const c = base.map(r => ({ ...r })); const v = c.find(r => normalize(r.team).includes('valence')); if (v) v.pts = (v.pts || 0) + n; return lynxPos(c); };
+                    [['si les Lynx gagnent', 3], ['si les Lynx gagnent (ap)', 2], ['si les Lynx perdent (ap)', 1], ['si les Lynx perdent', 0]].forEach(b => rows.push({ m: lynxNext, lynx: true, lbl: b[0], p: addLynx(b[1]) }));
+                }
+                up.forEach(m => {
                     const cloneH = base.map(r => ({ ...r })), cloneA = base.map(r => ({ ...r }));
                     const h = cloneH.find(r => normalize(r.team) === normalize(m.homeTeam)); if (h) h.pts = (h.pts || 0) + 3;
                     const a = cloneA.find(r => normalize(r.team) === normalize(m.awayTeam)); if (a) a.pts = (a.pts || 0) + 3;
-                    return { m, pH: lynxPos(cloneH), pA: lynxPos(cloneA) };
-                }).filter(r => r.pH != null || r.pA != null);
+                    const pH = lynxPos(cloneH), pA = lynxPos(cloneA);
+                    if (pH != null || pA != null) rows.push({ m, pH, pA });
+                });
                 if (!rows.length) { el.innerHTML = ''; return; }
                 const dOpts = { weekday: 'short', day: 'numeric', month: 'short' };
                 const seg = (p, lbl) => p == null ? '' : `<span class="${p < pos0 + 1 ? 'text-green-600 font-bold' : (p > pos0 + 1 ? 'text-red-500' : 'text-gray-500')}">${xmlEsc(lbl)} → Lynx ${p}e</span>`;
                 const line = (r) => {
                     const when = new Date(r.m.date).toLocaleDateString('fr-FR', dOpts) + ' ' + new Date(r.m.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                    const parts = [];
-                    if (r.pH != null) parts.push(seg(r.pH, 'si ' + r.m.homeTeam + ' gagne'));
-                    if (r.pA != null) parts.push(seg(r.pA, 'si ' + r.m.awayTeam + ' gagne'));
+                    let parts = [];
+                    if (r.lynx) { parts = [seg(r.p, r.lbl)]; }
+                    else {
+                        if (r.pH != null) parts.push(seg(r.pH, 'si ' + r.m.homeTeam + ' gagne'));
+                        if (r.pA != null) parts.push(seg(r.pA, 'si ' + r.m.awayTeam + ' gagne'));
+                    }
                     if (!parts.length) return '';
-                    return `<div class="py-1.5 border-t border-gray-100 dark:border-gray-700/60"><div class="text-[11px] font-bold text-gray-500 dark:text-gray-400">⚔️ ${xmlEsc(r.m.homeTeam)} - ${xmlEsc(r.m.awayTeam)} <span class="text-gray-400 font-normal">· ${when}</span></div><div class="text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-3">${parts.join('')}</div></div>`;
+                    return `<div class="py-1.5 border-t border-gray-100 dark:border-gray-700/60"><div class="text-[11px] font-bold ${r.lynx ? 'text-lynx-red dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}">${r.lynx ? '🦁' : '⚔️'} ${xmlEsc(r.m.homeTeam)} - ${xmlEsc(r.m.awayTeam)} <span class="text-gray-400 font-normal">· ${when}</span></div><div class="text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-3">${parts.join('')}</div></div>`;
                 };
-                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios des concurrents (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Position des Lynx selon les résultats des autres — actuellement ${pos0 + 1}e</p>${rows.map(line).join('')}</div>`;
+                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Position des Lynx selon chaque issue — actuellement ${pos0 + 1}e · chez les autres, victoire = 3 pts <span class="whitespace-nowrap">(prolongation : 2 pts / 1 pt, non simulé)</span></p>${rows.map(line).join('')}</div>`;
             } catch (e) { el.innerHTML = ''; }
         }
 
-        // v2.21 : classement vivant — les autres matchs du jour suivis en direct sur les pages FFHG (lecture navigateur, comme la page récap)
-        let liveDayCache = { at: 0, list: [] };
+        // v2.22 : classement vivant — via l'interface JSON de la FFHG (celle que la page calendrier du site appelle en arrière-plan) :
+        // numéros de match, horaires, scores et drapeau « en cours », sans dépendre de la mise en page HTML.
+        const FFHG_DIVS = [
+            { div: 'D1', comp: 241, phase: 721 },
+            { div: 'D2', comp: 198, phase: 567 }
+        ];
+        let ffhgSeasonCache = { at: 0, rows: [] };
+        async function ffhgSeasonRows() {
+            if (ffhgSeasonCache.rows.length && Date.now() - ffhgSeasonCache.at < 1800e3) return ffhgSeasonCache.rows;
+            const rows = [];
+            for (const d of FFHG_DIVS) {
+                const before = rows.length;
+                for (let page = 1; page <= 8; page++) {
+                    let txt = '';
+                    try {
+                        txt = await liveFetchText('https://www.hockeyfrance.com/competitions/wp-admin/admin-ajax.php?action=get_rencontres&page=' + page + '&equipe_id=&competition_id=' + d.comp + '&phase_id=' + d.phase + '&date_min=&date_max=&par_page=50&journee=&limite=0');
+                    } catch (e) { break; }
+                    if (!txt) break;
+                    let j = null;
+                    try { j = JSON.parse(txt); } catch (e) { break; }
+                    const arr = (j && j.data && Array.isArray(j.data.data)) ? j.data.data : [];
+                    for (const r of arr) {
+                        const rec = r.receveur, vis = r.visiteur;
+                        const dt = (r.calendrier && (r.calendrier.date_debut || r.calendrier.date_fin)) || r.date_rencontre || '';
+                        if (!rec || !vis || !dt) continue;
+                        let gh = null, ga = null;
+                        if (Array.isArray(r.score)) {
+                            for (const s of r.score) {
+                                if (s && s.equipe_id === rec.id) gh = Number(s.score);
+                                else if (s && s.equipe_id === vis.id) ga = Number(s.score);
+                            }
+                        }
+                        rows.push({ div: d.div, id: String(r.id), date: dt.replace(' ', 'T'), home: rec.libelle_court || rec.libelle || '', away: vis.libelle_court || vis.libelle || '', homeFull: rec.libelle_complet || '', awayFull: vis.libelle_complet || '', gh, ga, live: !!r.en_cours, done: r.etat === 'T' });
+                    }
+                    const meta = (j && j.data && j.data.meta) || {};
+                    const per = Number(meta.per_page) || 50;
+                    const tot = Number(meta.total) || 0;
+                    if (!arr.length || arr.length < per || (rows.length - before) >= tot) break;
+                }
+            }
+            if (rows.length) ffhgSeasonCache = { at: Date.now(), rows };
+            return rows;
+        }
         async function fetchDayLiveScores(dayM) {
             if (Date.now() - liveDayCache.at < 60e3) return liveDayCache.list;
-            const urls = ['https://www.hockeyfrance.com/competitions/championnats-seniors/d1/calendrier-resultats-pm-d1/', 'https://www.hockeyfrance.com/competitions/championnats-seniors/d2/saison-reguliere/calendrier-resultats-d2/', 'https://www.hockeyfrance.com/competitions/page-live/', 'https://www.hockeyfrance.com/competitions/live/'];
             const found = [];
-            for (const u of urls) {
-                try {
-                    const html = await liveFetchText(u);
-                    if (!html) continue;
-                    const rx = /rencontre[/=](\d{3,8})/g;
-                    let mm;
-                    while ((mm = rx.exec(html)) !== null) {
-                        const around = html.slice(Math.max(0, mm.index - 700), Math.min(html.length, mm.index + 700));
-                        const teams = [...new Set((dayM || []).flatMap(m => [m.homeTeam, m.awayTeam]).filter(t => t && around.includes(t)))];
-                        if (teams.length !== 2) continue;
-                        const sm = around.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})/g);
-                        if (!sm || !sm.length) continue;
-                        const last = sm[sm.length - 1].match(/(\d{1,2})\s*[-–]\s*(\d{1,2})/);
-                        const iA = around.indexOf(teams[0]), iB = around.indexOf(teams[1]), iS = around.lastIndexOf(sm[sm.length - 1]);
-                        let gA = null, gB = null;
-                        if (iA < iS && iS < iB) { gA = Number(last[1]); gB = Number(last[2]); }
-                        else if (iB < iS && iS < iA) { gA = Number(last[2]); gB = Number(last[1]); }
-                        if (gA == null || gB == null) continue;
-                        found.push({ tA: teams[0], tB: teams[1], gA, gB });
-                    }
-                    if (found.length) break;
-                } catch (e) {}
-            }
+            try {
+                const rows = await ffhgSeasonRows();
+                const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+                const d1 = new Date(d0.getTime() + 24 * 3600e3);
+                const wanted = (dayM || []).map(m => ({ m, h: normalize(m.homeTeam), a: normalize(m.awayTeam) })).filter(w => w.h && w.a);
+                for (const r of rows) {
+                    if (r.gh == null || r.ga == null) continue;
+                    const t = new Date(r.date).getTime();
+                    if (!(t >= d0.getTime() && t < d1.getTime())) continue;
+                    const rh = normalize(r.home), ra = normalize(r.away);
+                    const hit = wanted.find(w => (w.h === rh && w.a === ra) || (w.h === ra && w.a === rh));
+                    if (!hit) continue;
+                    const same = hit.h === rh;
+                    found.push({ tA: hit.m.homeTeam, tB: hit.m.awayTeam, gA: same ? r.gh : r.ga, gB: same ? r.ga : r.gh });
+                }
+            } catch (e) {}
             liveDayCache = { at: Date.now(), list: found };
             return found;
         }
@@ -3091,30 +3143,68 @@
                     const w = diff(m) > 0, nl = (Number(gf(m)) || 0) === (Number(ga(m)) || 0);
                     if (w) byS[s].v++; else if (nl) byS[s].n++; else byS[s].d++;
                     byS[s].pts += isL(m) ? matchPoints(gf(m), ga(m), m.isProl) : matchPoints(ga(m), gf(m), m.isProl); byS[s].mj++; });
+                // v2.22 : rang en saison régulière + division + phases (playoffs/maintien) par saison
                 const seasons = Object.keys(byS).sort();
+                seasons.forEach(s => {
+                    const ms = done.filter(m => (m.season || '?') === s);
+                    const tab = {};
+                    ms.forEach(m => { const th = m.homeTeam || '?', ta = m.awayTeam || '?';
+                        tab[th] = tab[th] || { team: th, pts: 0, diff: 0 };
+                        tab[ta] = tab[ta] || { team: ta, pts: 0, diff: 0 };
+                        tab[th].pts += matchPoints(Number(m.scoreHome) || 0, Number(m.scoreAway) || 0, m.isProl);
+                        tab[ta].pts += matchPoints(Number(m.scoreAway) || 0, Number(m.scoreHome) || 0, m.isProl);
+                        tab[th].diff += (Number(m.scoreHome) || 0) - (Number(m.scoreAway) || 0);
+                        tab[ta].diff += (Number(m.scoreAway) || 0) - (Number(m.scoreHome) || 0); });
+                    const ordered = Object.values(tab).sort((x, y) => y.pts - x.pts || y.diff - x.diff);
+                    const ir = ordered.findIndex(r => normalize(r.team).includes('valence'));
+                    byS[s].rank = ir >= 0 ? ir + 1 : null;
+                    const divs = [...new Set(ms.map(m => m.division).filter(Boolean))];
+                    byS[s].div = divs.length ? divs.join(', ') : '—';
+                    const phases = new Set();
+                    ms.filter(m => m.type && m.type !== 'Saison').forEach(m => {
+                        const t = String(m.type);
+                        if (/huitieme|1\s*\/\s*8/i.test(t)) phases.add('1/8');
+                        else if (/quart|1\s*\/\s*4/i.test(t)) phases.add('1/4');
+                        else if (/demi|1\s*\/\s*2|semi/i.test(t)) phases.add('1/2');
+                        else if (/maintien/i.test(t)) phases.add('Maintien');
+                        else if (/final/i.test(t)) { const my = isL(m) ? (Number(gf(m)) > Number(ga(m))) : (Number(ga(m)) > Number(gf(m))); if (my && isMatchFinished(m)) phases.add('🏆 Champion'); else phases.add('Finale'); }
+                        else if (/playoff/i.test(t)) phases.add('Playoffs');
+                    });
+                    byS[s].phases = [...phases].sort((x, y) => (x === '🏆 Champion' ? -1 : y === '🏆 Champion' ? 1 : 0));
+                });
                 const fmtM = (m) => `${isL(m) ? 'vs' : '@'} ${xmlEsc(isL(m) ? m.awayTeam : m.homeTeam)} <b class="tabular-nums">${gf(m)}-${ga(m)}</b>${m.isProl ? ' (ap)' : ''} <span class="text-gray-400 font-normal">— ${new Date(m.date).toLocaleDateString('fr-FR')}</span>`;
                 el.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                     <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl text-center"><div class="text-[10px] uppercase font-bold text-green-600 mb-1">Plus large victoire</div><div class="text-sm">${fmtM(bigW)}</div></div>
                     <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-center"><div class="text-[10px] uppercase font-bold text-blue-600 mb-1">Plus gros score</div><div class="text-sm">${fmtM(bigS)}</div></div>
                     <div class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-center"><div class="text-[10px] uppercase font-bold text-amber-600 mb-1">Série de victoires</div><div class="text-sm font-black">${best} matchs d'affilée</div><div class="text-[11px] text-gray-500">${bestEnd ? 'jusqu\u2019au ' + new Date(bestEnd.date).toLocaleDateString('fr-FR') : ''}</div></div>
                 </div>
-                <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="ranking-header"><th class="p-2">Saison</th><th class="p-2 text-center">MJ</th><th class="p-2 text-center">V</th><th class="p-2 text-center">N</th><th class="p-2 text-center">D</th><th class="p-2 text-center">Pts</th></tr></thead><tbody>
-                ${seasons.map(s => `<tr class="border-t border-gray-100 dark:border-gray-700/60"><td class="p-2 font-bold">${s === activeSeason ? xmlEsc(s) + ' 🦁' : xmlEsc(s)}</td><td class="p-2 text-center tabular-nums">${byS[s].mj}</td><td class="p-2 text-center text-green-600 font-bold tabular-nums">${byS[s].v}</td><td class="p-2 text-center tabular-nums">${byS[s].n}</td><td class="p-2 text-center text-red-500 font-bold tabular-nums">${byS[s].d}</td><td class="p-2 text-center font-black tabular-nums">${byS[s].pts}</td></tr>`).join('')}
-                </tbody></table></div>${seasons.length <= 1 ? '<p class="text-[10px] text-gray-400 text-center mt-2">Les saisons précédentes apparaîtront ici dès que leurs données seront en base.</p>' : ''}`;
+                <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="ranking-header"><th class="p-2">Saison</th><th class="p-2 text-center">Div</th><th class="p-2 text-center">Rang</th><th class="p-2 text-center">MJ</th><th class="p-2 text-center">V</th><th class="p-2 text-center">N</th><th class="p-2 text-center">D</th><th class="p-2 text-center">Pts</th><th class="p-2">Phases</th></tr></thead><tbody>
+                ${seasons.map(s => `<tr class="border-t border-gray-100 dark:border-gray-700/60"><td class="p-2 font-bold">${s === activeSeason ? xmlEsc(s) + ' 🦁' : xmlEsc(s)}</td><td class="p-2 text-center text-xs">${xmlEsc(byS[s].div)}</td><td class="p-2 text-center font-bold tabular-nums">${byS[s].rank ? byS[s].rank + (byS[s].rank === 1 ? 'ᵉʳ' : 'e') : '—'}</td><td class="p-2 text-center tabular-nums">${byS[s].mj}</td><td class="p-2 text-center text-green-600 font-bold tabular-nums">${byS[s].v}</td><td class="p-2 text-center tabular-nums">${byS[s].n}</td><td class="p-2 text-center text-red-500 font-bold tabular-nums">${byS[s].d}</td><td class="p-2 text-center font-black tabular-nums">${byS[s].pts}</td><td class="p-2 text-xs">${byS[s].phases.length ? xmlEsc(byS[s].phases.join(' · ')) : '—'}</td></tr>`).join('')}
+                </tbody></table></div><p class="text-[10px] text-gray-400 text-center mt-2">Rang = classement en saison régulière calculé depuis les matchs de la saison en base · Phases = tours de playoffs/maintien détectés dans le calendrier (Finale remportée = 🏆) · la division n'est pas enregistrée dans les données actuelles : la colonne se remplira dès qu'un import la précise.</p>`;
             } catch (e) { el.innerHTML = ''; }
         }
 
-        let calFilters = { q: '', when: 'all', scope: 'all' };
+        let calFilters = { ta: '', tb: '', when: 'all', scope: 'all' };
+        function fillCalTeams() {
+            const a = document.getElementById('cal-team-a'), b = document.getElementById('cal-team-b');
+            if (!a || !b) return;
+            const teams = [...new Set((sMatches || []).flatMap(m => [m.homeTeam, m.awayTeam]).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'fr'));
+            const cur = { a: a.value, b: b.value };
+            const opts = (sel) => '<option value="">Toutes les équipes</option>' + teams.map(t => `<option value="${xmlEsc(t)}"${t === sel ? ' selected' : ''}>${xmlEsc(t)}</option>`).join('');
+            a.innerHTML = opts(cur.a); b.innerHTML = opts(cur.b);
+        }
         function initCalSearch() {
-            const q = document.getElementById('cal-search'), w = document.getElementById('cal-when'), s = document.getElementById('cal-scope'), r = document.getElementById('cal-search-reset');
-            if (!q || q.dataset.wired) return; q.dataset.wired = '1';
-            q.oninput = () => { calFilters.q = q.value; try { renderFullCal(sMatches); } catch (e) {} };
+            const a = document.getElementById('cal-team-a'), b = document.getElementById('cal-team-b'), w = document.getElementById('cal-when'), s = document.getElementById('cal-scope'), r = document.getElementById('cal-search-reset');
+            if (!a || a.dataset.wired) return; a.dataset.wired = '1';
+            if (a) a.onchange = () => { calFilters.ta = a.value; try { renderFullCal(sMatches); } catch (e) {} };
+            if (b) b.onchange = () => { calFilters.tb = b.value; try { renderFullCal(sMatches); } catch (e) {} };
             if (w) w.onchange = () => { calFilters.when = w.value; try { renderFullCal(sMatches); } catch (e) {} };
             if (s) s.onchange = () => { calFilters.scope = s.value; try { renderFullCal(sMatches); } catch (e) {} };
-            if (r) r.onclick = () => { calFilters = { q: '', when: 'all', scope: 'all' }; q.value = ''; if (w) w.value = 'all'; if (s) s.value = 'all'; try { renderFullCal(sMatches); } catch (e) {} };
+            if (r) r.onclick = () => { calFilters = { ta: '', tb: '', when: 'all', scope: 'all' }; if (a) a.value = ''; if (b) b.value = ''; if (w) w.value = 'all'; if (s) s.value = 'all'; try { renderFullCal(sMatches); } catch (e) {} };
         }
 
         function renderFullCal(list) {
+             try { fillCalTeams(); } catch (e) {} // v2.22 : listes d'équipes des menus déroulants toujours à jour
              const playoffs = list.filter(m => m.type === 'Playoff' || m.type === 'Playoffs' || (m.type && m.type !== 'Saison' && !/maintien/i.test(m.type))).sort((a,b)=>new Date(a.date)-new Date(b.date));
              const regular = list.filter(m => !m.type || m.type === 'Saison').sort((a,b)=>new Date(a.date)-new Date(b.date));
              
@@ -3247,7 +3337,10 @@
                  if (cf.scope === 'lynx' && !(normalize(m.homeTeam || '').includes('valence') || normalize(m.awayTeam || '').includes('valence'))) return false;
                  if (cf.when === 'upcoming' && (isMatchFinished(m) || (new Date(m.date).getTime() || 0) + 3 * 3600e3 < nowMs)) return false;
                  if (cf.when === 'played' && !isMatchFinished(m)) return false;
-                 if (cf.q) { const nq = normalize(cf.q); if (!normalize(m.homeTeam || '').includes(nq) && !normalize(m.awayTeam || '').includes(nq)) return false; }
+                 const h = normalize(m.homeTeam || ''), aw = normalize(m.awayTeam || '');
+                 if (cf.ta && h !== normalize(cf.ta) && aw !== normalize(cf.ta)) return false;
+                 if (cf.tb && h !== normalize(cf.tb) && aw !== normalize(cf.tb)) return false;
+                 if (cf.ta && cf.tb && !((h === normalize(cf.ta) && aw === normalize(cf.tb)) || (h === normalize(cf.tb) && aw === normalize(cf.ta)))) return false;
                  return true;
              });
              if(!fRegular.length) { el.innerHTML = '<div class="p-4 italic text-gray-500">Aucun match ne correspond à cette recherche.</div>'; }
@@ -3686,6 +3779,57 @@
         let newsTagFilter = null; // v2.19 : filtre par hashtag (clic sur une pastille #), null = pas de filtre
         let newsReadFilter = null; // v2.17 : filtre de lecture — all / unread / read ; null = automatique : « Non lus » par défaut s'il y en a, sinon « Tous » (demande du 07/11)
         let editingNewsId = null; // v2.17 : article en cours de modification (modale dédiée)
+        let pendingDraft = null, draftCapture = null; // v2.22 : brouillon d'article — générer → corriger → publier (ou jeter)
+        function openDraftModal(draft) {
+            pendingDraft = draft;
+            editingNewsId = null;
+            document.getElementById('news-edit-title').value = (draft.payload && draft.payload.title) || '';
+            document.getElementById('news-edit-content').value = (draft.payload && draft.payload.content) || '';
+            const tgEl = document.getElementById('news-edit-tags'); if (tgEl) tgEl.value = '';
+            const dtEl = document.getElementById('news-edit-date'); if (dtEl) dtEl.value = new Date().toISOString().slice(0, 10);
+            const btn = document.getElementById('news-edit-save'); if (btn) btn.textContent = '✅ Publier';
+            toggleModal('news-edit-modal', true);
+            verifyDraftFacts();
+            appAlert('📝 Brouillon prêt : corrige ce que tu veux (titre, contenu, date, hashtags), puis « ✅ Publier ». Ferme la fenêtre pour jeter le brouillon sans rien publier.');
+        }
+        // v2.22 : vérification des faits du brouillon — chaque phrase est comparée aux données fournies à l'IA
+        // ✅ vert = appuyée sur les données du site · 📰 bleu = écho presse (doit être sourcé) · ⚠️ orange = quelque chose
+        // (chiffre ou nom propre) n'apparaît NULLE PART dans les données du site → possible invention, à vérifier avant publication.
+        function verifyDraftFacts() {
+            const el = document.getElementById('news-verify-panel');
+            if (!el) return;
+            if (!pendingDraft) { el.innerHTML = ''; return; }
+            try {
+                const txt = (document.getElementById('news-edit-content').value || '') + '\n' + (document.getElementById('news-edit-title').value || '');
+                const src = normalize(String(pendingDraft.sources || ''));
+                const known = new Set();
+                try { (allMatches || []).forEach(m => [m.homeTeam, m.awayTeam].forEach(x => { if (x) normalize(String(x)).split(/\s+/).forEach(w => { if (w.length > 3) known.add(w); }); })); } catch (e) {}
+                try { [...(leaguePlayers || []), ...(roster || [])].forEach(p => { if (p && p.name) normalize(String(p.name)).split(/\s+/).forEach(w => { if (w.length > 3) known.add(w); }); }); } catch (e) {}
+                const srcWords = new Set(src.split(/[^a-zà-ÿ0-9]+/).filter(w => w.length > 2));
+                const sents = txt.split(/(?<=[.!?…])\s+|\n+/).map(s => s.trim()).filter(s => s.length > 3 && !/^[#>*\-|]/.test(s));
+                const rows = sents.map(s => {
+                    const press = /selon |d'après /i.test(s);
+                    const bad = [];
+                    (s.match(/\d[\d\s.,']*/g) || []).forEach(n => { const nn = n.replace(/[\s.,']+$/, '').trim(); if (nn && !src.includes(normalize(nn))) bad.push(nn); });
+                    s.split(/\s+/).forEach((w, i) => {
+                        const clean = w.replace(/[^A-ZÀ-Ýa-zà-ÿ'-]/g, '');
+                        if (i === 0 || clean.length < 4) return;
+                        if (!/^[A-ZÀ-Ý][a-zà-ÿ]{3,}(-[A-ZÀ-Ý][a-zà-ÿ]{3,})?$/.test(clean)) return;
+                        const nc = normalize(clean);
+                        if (!srcWords.has(nc) && !known.has(nc)) bad.push(clean);
+                    });
+                    return { s, press, bad: [...new Set(bad)].slice(0, 4) };
+                });
+                const nBad = rows.filter(r => r.bad.length).length, nPress = rows.filter(r => r.press && !r.bad.length).length, nOk = rows.length - nBad - nPress;
+                const chip = (cls, lbl, n) => n ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}">${lbl} ${n}</span>` : '';
+                const line = (r) => r.bad.length
+                    ? `<div class="flex gap-2 py-1"><span class="mt-1 w-2 h-2 rounded-full bg-orange-500 flex-shrink-0"></span><div><span class="text-orange-600 dark:text-orange-400 font-bold">⚠️ À vérifier</span> — <span class="text-gray-600 dark:text-gray-300">${xmlEsc(r.s.slice(0, 160))}${r.s.length > 160 ? '…' : ''}</span><div class="text-[10px] text-orange-500 mt-0.5">absent des données du site : ${r.bad.map(x => xmlEsc(x)).join(' · ')}</div></div></div>`
+                    : r.press
+                        ? `<div class="flex gap-2 py-1"><span class="mt-1 w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span><div class="text-gray-500 dark:text-gray-400"><span class="font-bold text-blue-600 dark:text-blue-400">📰 Presse (vérifie la source citée)</span> — ${xmlEsc(r.s.slice(0, 140))}${r.s.length > 140 ? '…' : ''}</div></div>`
+                        : `<div class="flex gap-2 py-1"><span class="mt-1 w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></span><div class="text-gray-500 dark:text-gray-400"><span class="font-bold text-green-600 dark:text-green-400">✅ Données du site</span> — ${xmlEsc(r.s.slice(0, 140))}${r.s.length > 140 ? '…' : ''}</div></div>`;
+                el.innerHTML = rows.length ? `<div class="p-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700"><div class="flex flex-wrap gap-2 items-center mb-1">${chip('bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300', '✅ site', nOk)}${chip('bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', '📰 presse', nPress)}${chip('bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', '⚠️ à vérifier', nBad)}<span class="text-[10px] text-gray-400">comparaison phrase par phrase avec les données fournies à l'IA</span></div><div class="max-h-40 overflow-y-auto">${rows.map(line).join('')}</div></div>` : '';
+            } catch (e) { el.innerHTML = ''; }
+        }
         function editNews(id) {
             const n = (newsList || []).find(x => x.id === id);
             if (!n) return;
@@ -3694,6 +3838,8 @@
             document.getElementById('news-edit-content').value = n.content || '';
             const tgEl = document.getElementById('news-edit-tags'); if (tgEl) tgEl.value = Array.isArray(n.tags) ? n.tags.join(' ') : (n.tags || '');
             const dtEl = document.getElementById('news-edit-date'); if (dtEl) dtEl.value = n.date ? new Date(n.date).toISOString().slice(0, 10) : ''; // v2.21
+            pendingDraft = null; // v2.22 : mode édition simple
+            const sb = document.getElementById('news-edit-save'); if (sb) sb.textContent = 'Enregistrer';
             toggleModal('news-edit-modal', true);
         }
         // Lu / non-lu des actus (par appareil, localStorage) — v2.17 : tout article non ouvert est « non lu » par défaut
@@ -5345,6 +5491,7 @@
                     );
                 } catch (e) { aiTxt = null; }
                 const content = aiTxt ? aiTxt.trim() + '\n\n' + rankTxt + (pronTxt ? '\n' + pronTxt : '') : fallback;
+                if (draftCapture) { draftCapture = { docId, sources: [opp, lSc + '-' + oSc, String(m.date || ''), rankTxt, gameTxt, pronTxt, dayTxt, pressTxt].filter(Boolean).join('\n'), payload: { title, content, date: new Date().toISOString(), auto: true, kind: 'result', matchId } }; return 'draft'; } // v2.22 : mode brouillon
                 await setDoc(doc(db, `${basePath}/news/${docId}`), { title, content, date: new Date().toISOString(), auto: true, kind: 'result', matchId });
                 return 'ok';
             } catch (e) { console.warn('generateResultArticle', e); return 'error'; }
@@ -5361,8 +5508,9 @@
                 if (!m) return 'nomatch';
                 const docId = `auto_preview_${hashId(m.id)}`;
                 if (newsList.some(n => n.id === docId)) {
-                    if (!force) return 'exists';
-                    try { await deleteDoc(doc(db, `${basePath}/news/${docId}`)); } catch (e) {}
+                    if (draftCapture) { /* v2.22 : brouillon — l'ancien article ne sera remplacé qu'à la publication */ }
+                    else if (!force) return 'exists';
+                    else { try { await deleteDoc(doc(db, `${basePath}/news/${docId}`)); } catch (e) {} }
                 }
                 const isHome = normalize(m.homeTeam).includes('valence');
                 const opp = isHome ? m.awayTeam : m.homeTeam;
@@ -5451,6 +5599,7 @@
                     );
                 } catch (e) { aiTxt = null; }
                 const content = aiTxt ? aiTxt.trim() + '\n\n' + statsTxt + '\n\n' + trackTxt + trendTxt + '*Article généré automatiquement par le site.*' : fallback;
+                if (draftCapture) { draftCapture = { docId, sources: [when, opp, statsTxt, trackTxt, trendTxt, pressTxt].filter(Boolean).join('\n'), payload: { title, content, date: new Date().toISOString(), auto: true, kind: 'preview', matchId: m.id, pred: predSaved } }; return 'draft'; } // v2.22 : mode brouillon
                 await setDoc(doc(db, `${basePath}/news/${docId}`), { title, content, date: new Date().toISOString(), auto: true, kind: 'preview', matchId: m.id, pred: predSaved });
                 return 'ok';
             } catch (e) { console.warn('generatePreviewArticle', e); return 'error'; }
@@ -5485,6 +5634,7 @@
                 } catch (e) { aiTxt = null; }
                 const content = aiTxt ? aiTxt.trim() + '\n\n' + statsTxt : fallback;
                 const docId = `auto_poule_${hashId(activeSeason + '_' + new Date().toISOString().slice(0, 7))}`;
+                if (draftCapture) { draftCapture = { docId, sources: statsTxt, payload: { title, content, date: new Date().toISOString(), auto: true, kind: 'poule' } }; return 'draft'; } // v2.22 : mode brouillon
                 await setDoc(doc(db, `${basePath}/news/${docId}`), { title, content, date: new Date().toISOString(), auto: true, kind: 'poule' });
                 return 'ok';
             } catch (e) { console.warn('generatePouleArticle', e); return 'error'; }
@@ -5547,16 +5697,16 @@
         }
 
         // --- Récap mensuel auto : publié au début du mois suivant, s'il y a eu au moins 2 matchs ---
-        async function generateMonthArticle() {
+        async function generateMonthArticle(force) {
             try {
                 if (!db || fbLoadFailed) return 'nodb';
                 const now = new Date();
                 const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
                 const monthKey = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
                 const monthLabel = prev.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-                if (artLock('month')) return 'locked'; // v2.21 : verrou 7 jours
+                if (!force && artLock('month')) return 'locked'; // v2.21 : verrou 7 jours (le forçage manuel passe toujours)
                 const docId = `auto_month_${hashId(activeSeason + '_' + monthKey)}`;
-                if (newsList.some(n => n.id === docId)) return 'exists';
+                if (newsList.some(n => n.id === docId) && !draftCapture) return 'exists';
                 const start = new Date(prev.getFullYear(), prev.getMonth(), 1).getTime();
                 const end = new Date(prev.getFullYear(), prev.getMonth() + 1, 1).getTime();
                 const isLynx = m => normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence');
@@ -5615,6 +5765,7 @@
                 } catch (e) { aiTxt = null; }
                 const fallback = `Un mois chargé côté Lynx : ${w} victoire${w > 1 ? 's' : ''} sur ${monthMatches.length} matchs, ${gf} buts marqués pour ${ga} encaissés.\n\n${monthData}`;
                 const content = (aiTxt ? aiTxt.trim() + '\n\n' : '') + monthData + '\n\n*Article généré automatiquement par le site.*';
+                if (draftCapture) { draftCapture = { docId, sources: [monthLabel, resTxt, pronTxt, scorersTxt, rankTxt2].filter(Boolean).join('\n'), payload: { title, content, date: new Date().toISOString(), auto: true, kind: 'month', season: activeSeason, monthKey } }; return 'draft'; } // v2.22 : mode brouillon
                 await setDoc(doc(db, `${basePath}/news/${docId}`), { title, content, date: new Date().toISOString(), auto: true, kind: 'month', season: activeSeason, monthKey });
                 return 'ok';
             } catch (e) { console.warn('generateMonthArticle', e); return 'error'; }
@@ -6969,35 +7120,70 @@ ${cards}
                 const existingId = `auto_result_${hashId(done.id)}`;
                 const already = newsList.some(n => n.id === existingId);
                 const go = async () => {
-                    btnGenResult.disabled = true; btnGenResult.textContent = 'Génération en cours…';
-                    if (already) { try { await deleteDoc(doc(db, `${basePath}/news/${existingId}`)); } catch (e) {} }
+                    btnGenResult.disabled = true; btnGenResult.textContent = 'Génération du brouillon…';
+                    draftCapture = {}; // v2.22 : brouillon — rien n'est publié avant validation
                     const r = await generateResultArticle(done.id).catch(() => 'error');
+                    const draft = (r === 'draft') ? draftCapture : null; draftCapture = null;
                     btnGenResult.disabled = false; btnGenResult.textContent = 'Article du dernier résultat';
-                    appAlert(r === 'ok' ? (already ? 'Article régénéré avec les données à jour !' : 'Article publié dans les Actus !') : 'Publication impossible (vérifie la connexion Firebase).');
+                    if (r === 'draft' && draft) openDraftModal(draft);
+                    else appAlert(r === 'ok' ? 'Article publié dans les Actus !' : 'Génération impossible (vérifie la connexion Firebase).');
                 };
-                if (already) appConfirm('Un article existe déjà pour ce match. Le régénérer avec les données à jour (stats joueurs, déroulé live) ? Toute modification manuelle de l\'article sera perdue.', go);
+                if (already) appConfirm('Un article existe déjà pour ce match. Générer un brouillon à jour (stats joueurs, déroulé live) ? L\'article actuel ne sera remplacé qu\'à la publication du brouillon.', go);
                 else go();
             };
             const btnGenPreview = document.getElementById('btn-gen-preview-article');
             if(btnGenPreview) btnGenPreview.onclick = async () => {
-                btnGenPreview.disabled = true; btnGenPreview.textContent = 'Génération en cours…';
+                btnGenPreview.disabled = true; btnGenPreview.textContent = 'Génération du brouillon…';
+                draftCapture = {}; // v2.22 : brouillon
                 const r = await generatePreviewArticle(true).catch(() => 'error');
+                const draft = (r === 'draft') ? draftCapture : null; draftCapture = null;
                 btnGenPreview.disabled = false; btnGenPreview.textContent = 'Pronostic du prochain match';
-                appAlert(r === 'ok' ? 'Pronostic publié dans les Actus !' : (r === 'nomatch' ? 'Aucun match Lynx à venir trouvé.' : (r === 'exists' ? 'Pronostic déjà publié.' : 'Publication impossible (vérifie la connexion Firebase).')));
+                if (r === 'draft' && draft) openDraftModal(draft);
+                else appAlert(r === 'nomatch' ? 'Aucun match Lynx à venir trouvé.' : (r === 'exists' ? 'Pronostic déjà publié.' : 'Génération impossible (vérifie la connexion Firebase).'));
             };
             const btnGenMonth = document.getElementById('btn-gen-month-article');
             if(btnGenMonth) btnGenMonth.onclick = async () => {
-                btnGenMonth.disabled = true; btnGenMonth.textContent = 'Génération en cours…';
-                const r = await generateMonthArticle().catch(() => 'error');
+                btnGenMonth.disabled = true; btnGenMonth.textContent = 'Génération du brouillon…';
+                draftCapture = {}; // v2.22 : brouillon (force : passe le verrou 7 jours)
+                const r = await generateMonthArticle(true).catch(() => 'error');
+                const draft = (r === 'draft') ? draftCapture : null; draftCapture = null;
                 btnGenMonth.disabled = false; btnGenMonth.textContent = 'Récap du mois dernier';
-                appAlert(r === 'ok' ? 'Récap mensuel publié dans les Actus !' : (r === 'exists' ? 'Le récap de ce mois est déjà publié.' : (r === 'nomonth' ? 'Moins de 2 matchs joués le mois dernier.' : 'Publication impossible (vérifie la connexion Firebase).')));
+                if (r === 'draft' && draft) openDraftModal(draft);
+                else appAlert(r === 'exists' ? 'Le récap de ce mois est déjà publié.' : (r === 'nomonth' ? 'Moins de 2 matchs joués le mois dernier.' : (r === 'locked' ? 'Type verrouillé 7 jours (déverrouille dans Dates & verrous).' : 'Génération impossible (vérifie la connexion Firebase).')));
             };
             const btnGenPoule = document.getElementById('btn-gen-poule-article');
             if(btnGenPoule) btnGenPoule.onclick = async () => {
-                btnGenPoule.disabled = true; btnGenPoule.textContent = 'Génération en cours…';
+                btnGenPoule.disabled = true; btnGenPoule.textContent = 'Génération du brouillon…';
+                draftCapture = {}; // v2.22 : brouillon
                 const r = await generatePouleArticle().catch(() => 'error');
+                const draft = (r === 'draft') ? draftCapture : null; draftCapture = null;
                 btnGenPoule.disabled = false; btnGenPoule.textContent = 'Panorama de la poule';
-                appAlert(r === 'ok' ? 'Panorama publié dans les Actus !' : (r === 'nodata' ? 'Pas assez de données (classement ou calendrier vide).' : (r === 'nodb' ? 'Firebase injoignable.' : 'Publication impossible (vérifie la connexion Firebase).')));
+                if (r === 'draft' && draft) openDraftModal(draft);
+                else appAlert(r === 'ok' ? 'Panorama publié dans les Actus !' : (r === 'nodata' ? 'Pas assez de données (classement ou calendrier vide).' : (r === 'nodb' ? 'Firebase injoignable.' : 'Génération impossible (vérifie la connexion Firebase).')));
+            };
+            // v2.22 : article personnalisé — l'admin demande, l'IA rédige un brouillon corrigeable
+            const btnGenCustom = document.getElementById('btn-gen-custom-article');
+            if (btnGenCustom) btnGenCustom.onclick = async () => {
+                const inp = document.getElementById('custom-article-prompt');
+                const ask = ((inp && inp.value) || '').trim();
+                if (!ask) { appAlert('Écris d\'abord le sujet ou la consigne dans le cadre prévu.'); return; }
+                btnGenCustom.disabled = true; btnGenCustom.textContent = 'Génération en cours…';
+                try {
+                    let ctx = '';
+                    try {
+                        const done = allMatches.filter(m => isMatchFinished(m) && (normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence'))).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
+                        if (done.length) ctx += 'Derniers résultats des Lynx :\n' + done.map(m => `- ${new Date(m.date).toLocaleDateString('fr-FR')} : ${m.homeTeam} ${m.scoreHome}-${m.scoreAway}${m.isProl ? ' (ap)' : ''} ${m.awayTeam}`).join('\n') + '\n';
+                        const nx = allMatches.filter(m => !isMatchFinished(m) && (normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence'))).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+                        if (nx) ctx += 'Prochain match : ' + nx.homeTeam + ' - ' + nx.awayTeam + ', le ' + new Date(nx.date).toLocaleDateString('fr-FR') + '.\n';
+                    } catch (e) {}
+                    const txt = await aiCompose(
+                        `Demande de l'administrateur du site des Lynx de Valence : « ${ask} »\n\nDonnées internes du site (SEULE source autorisée pour les faits hockey — n'invente aucun joueur, score ou résultat absent de ce message) :\n${ctx || 'aucune donnée de match disponible'}`,
+                        `Tu es le rédacteur du site officiel des Lynx de Valence (hockey sur glace, France). Rédige l'article demandé, en français, dans un ton adapté au site d'un club, en Markdown sans titre ni heading. RÈGLE ABSOLUE — AUCUNE INVENTION : n'invente aucun nom de joueur, score, date ou statistique qui ne figure pas dans les données fournies ; si la demande porte sur un sujet hors données (événement de club, annonce, portrait sans stats…), rédige-le de façon sobre et générique sans rien inventer. 100 à 250 mots.\n\n${PRESS_RULES}`
+                    );
+                    const content = (txt || '').trim() || '';
+                    btnGenCustom.disabled = false; btnGenCustom.textContent = '✨ Générer avec l\'IA (brouillon corrigeable)';
+                    openDraftModal({ docId: null, sources: [ctx, ask].filter(Boolean).join('\n'), payload: { title: ask.length > 70 ? ask.slice(0, 67) + '…' : ask, content, auto: true, kind: 'custom' } });
+                } catch (e) { btnGenCustom.disabled = false; btnGenCustom.textContent = '✨ Générer avec l\'IA (brouillon corrigeable)'; appAlert('Génération impossible : ' + (e && e.message ? e.message : 'erreur')); }
             };
             const btnExportRss = document.getElementById('btn-export-rss');
             if(btnExportRss) btnExportRss.onclick = () => exportRssFeed();
@@ -7056,13 +7242,13 @@ ${cards}
                 };
                 btnNotif.onclick = notifToggle; const btnNotifMobile = document.getElementById('btn-notif-mobile'); if (btnNotifMobile) btnNotifMobile.onclick = notifToggle;
                 updNotifUi();
-                const notifPrefsDefault = { reminders: true, goals: true, goalsOpp: true, tiers: true, result: true, articles: true, actus: true, ticket: true };
+                const notifPrefsDefault = { reminders: true, goals: true, goalsOpp: true, tiers: true, result: true, articles: true, actus: true, ticket: true, onlyDigest: false };
                 const getNotifPrefs = () => { try { return { ...notifPrefsDefault, ...JSON.parse(localStorage.getItem('lynx_notif_prefs') || '{}') }; } catch (e) { return { ...notifPrefsDefault }; } };
                 const saveNotifPrefsRemote = async () => { try { if (!pushSupported || localStorage.getItem('lynx_push') !== '1' || !db || fbLoadFailed) return; const reg = await navigator.serviceWorker.register('sw.js'); const sub = await reg.pushManager.getSubscription(); if (!sub) return; await setDoc(doc(db, `${basePath}/push-subs/${hashId(sub.endpoint)}`), { prefs: getNotifPrefs() }, { merge: true }); } catch (e) { console.warn('prefs sync', e); } };
-                const openNotifPrefs = () => { const p = getNotifPrefs(); document.getElementById('chk-pref-reminders').checked = p.reminders; document.getElementById('chk-pref-goals').checked = p.goals; document.getElementById('chk-pref-goals-opp').checked = p.goalsOpp; document.getElementById('chk-pref-tiers').checked = p.tiers; document.getElementById('chk-pref-result').checked = p.result; document.getElementById('chk-pref-articles').checked = p.articles; document.getElementById('chk-pref-actus').checked = p.actus; document.getElementById('chk-pref-ticket').checked = p.ticket; toggleModal('notif-prefs-modal', true); };
+                const openNotifPrefs = () => { const p = getNotifPrefs(); document.getElementById('chk-pref-reminders').checked = p.reminders; document.getElementById('chk-pref-goals').checked = p.goals; document.getElementById('chk-pref-goals-opp').checked = p.goalsOpp; document.getElementById('chk-pref-tiers').checked = p.tiers; document.getElementById('chk-pref-result').checked = p.result; document.getElementById('chk-pref-articles').checked = p.articles; document.getElementById('chk-pref-actus').checked = p.actus; document.getElementById('chk-pref-ticket').checked = p.ticket; document.getElementById('chk-pref-digest').checked = !!p.onlyDigest; toggleModal('notif-prefs-modal', true); };
                 document.querySelectorAll('#btn-notif-cfg, #btn-notif-cfg-mobile').forEach(b => { if (b) b.onclick = openNotifPrefs; });
                 const btnSaveNotifPrefs = document.getElementById('btn-save-notif-prefs');
-                if (btnSaveNotifPrefs) btnSaveNotifPrefs.onclick = async () => { localStorage.setItem('lynx_notif_prefs', JSON.stringify({ reminders: document.getElementById('chk-pref-reminders').checked, goals: document.getElementById('chk-pref-goals').checked, goalsOpp: document.getElementById('chk-pref-goals-opp').checked, tiers: document.getElementById('chk-pref-tiers').checked, result: document.getElementById('chk-pref-result').checked, articles: document.getElementById('chk-pref-articles').checked, actus: document.getElementById('chk-pref-actus').checked, ticket: document.getElementById('chk-pref-ticket').checked })); toggleModal('notif-prefs-modal', false); appAlert('🔔 Préférences enregistrées pour cet appareil.'); saveNotifPrefsRemote(); };
+                if (btnSaveNotifPrefs) btnSaveNotifPrefs.onclick = async () => { localStorage.setItem('lynx_notif_prefs', JSON.stringify({ reminders: document.getElementById('chk-pref-reminders').checked, goals: document.getElementById('chk-pref-goals').checked, goalsOpp: document.getElementById('chk-pref-goals-opp').checked, tiers: document.getElementById('chk-pref-tiers').checked, result: document.getElementById('chk-pref-result').checked, articles: document.getElementById('chk-pref-articles').checked, actus: document.getElementById('chk-pref-actus').checked, ticket: document.getElementById('chk-pref-ticket').checked, onlyDigest: document.getElementById('chk-pref-digest').checked })); toggleModal('notif-prefs-modal', false); appAlert('🔔 Préférences enregistrées pour cet appareil.'); saveNotifPrefsRemote(); };
                 const btnCloseNotifPrefs = document.getElementById('btn-close-notif-prefs');
                 if (btnCloseNotifPrefs) btnCloseNotifPrefs.onclick = () => toggleModal('notif-prefs-modal', false);
             }
@@ -7956,28 +8142,23 @@ ${cards}
                     }
                 } catch (e) { console.warn('punchline', e); } finally { livePunchBusy = false; }
             }
-            // ---- Détection auto du match du jour (page live FFHG via proxy, best effort) ----
+            // ---- Détection auto du match du jour (interface JSON FFHG via proxy, best effort) ----
             async function liveAutoDetect() {
                 const btn = document.getElementById('live-btn-detect');
                 const inp = document.getElementById('live-match-url');
                 if (btn) { btn.disabled = true; btn.innerHTML = '🔍 Recherche…'; }
-                const urls = ['https://www.hockeyfrance.com/competitions/championnats-seniors/d1/calendrier-resultats-pm-d1/', 'https://www.hockeyfrance.com/competitions/championnats-seniors/d2/saison-reguliere/calendrier-resultats-d2/', 'https://www.hockeyfrance.com/competitions/page-live/', 'https://www.hockeyfrance.com/competitions/live/'];
                 let found = null, lastErr = null;
-                for (const u of urls) {
-                    try {
-                        const html = await liveFetchText(u);
-                        const rx = /rencontre[/=](\d{3,8})/g;
-                        let m, seen = new Set();
-                        while ((m = rx.exec(html)) !== null) {
-                            const id = m[1];
-                            if (seen.has(id)) continue;
-                            seen.add(id);
-                            const around = html.slice(Math.max(0, m.index - 700), Math.min(html.length, m.index + 700));
-                            if (liveIsMyTeam(around)) { found = id; break; }
-                        }
-                        if (found) break;
-                    } catch (e) { lastErr = e; }
-                }
+                try {
+                    const rows = await ffhgSeasonRows();
+                    if (!rows.length) lastErr = new Error('vide');
+                    const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+                    const d1 = new Date(d0.getTime() + 24 * 3600e3);
+                    for (const r of rows) {
+                        const t = new Date(r.date).getTime();
+                        if (!(t >= d0.getTime() && t < d1.getTime())) continue;
+                        if (liveIsMyTeam(r.home) || liveIsMyTeam(r.homeFull) || liveIsMyTeam(r.away) || liveIsMyTeam(r.awayFull)) { found = r.id; break; }
+                    }
+                } catch (e) { lastErr = e; }
                 if (btn) { btn.disabled = false; btn.innerHTML = '🪄 <span class="hidden md:inline">Trouver le match du jour</span>'; }
                 if (found) {
                     if (inp) inp.value = found;
@@ -8032,7 +8213,7 @@ ${cards}
             }
             // v2.18 : filtres de notifications fins — lus à la volée (portée module : le direct en a besoin hors du bloc push)
             function notifWants(key) {
-                try { const p = JSON.parse(localStorage.getItem('lynx_notif_prefs') || '{}'); return p[key] !== false; } catch (e) { return true; }
+                try { const p = JSON.parse(localStorage.getItem('lynx_notif_prefs') || '{}'); if (p.onlyDigest) return false; return p[key] !== false; } catch (e) { return true; }
             }
             function liveNotify(title, body, tag) {
                 // v2.18 : chaque type d'alerte du direct respecte les préférences de l'appareil
@@ -9060,10 +9241,33 @@ ${cards}
             const sInp = document.getElementById('search-input');
             if (sInp) sInp.oninput = (e) => runUniversalSearch(e.target.value); document.getElementById('close-admin-modal').onclick = () => toggleModal('admin-modal', false); document.getElementById('open-admin-modal').onclick = () => tryOpenAdmin(); document.getElementById('open-admin-modal-mobile').onclick = () => tryOpenAdmin(); try { wireAdminSecurity(); } catch (e) { console.warn('Admin security non branchée :', e); } document.getElementById('close-bot-modal').onclick = () => toggleModal('bot-modal', false); document.getElementById('open-bot-modal').onclick = () => toggleModal('bot-modal', true); document.getElementById('open-bot-modal-mobile').onclick = () => toggleModal('bot-modal', true);
             // v2.17 : modale de modification d'article (depuis les actus, admin déverrouillé)
-            document.getElementById('close-news-edit-modal').onclick = () => toggleModal('news-edit-modal', false);
+            document.getElementById('close-news-edit-modal').onclick = () => { pendingDraft = null; toggleModal('news-edit-modal', false); };
             initCalSearch(); // v2.21 : filtres du calendrier général
             setInterval(() => { try { const hs = document.getElementById('home-summary'); if (hs && hs.classList.contains('active') && window.__homeCtx) renderLiveStandings(window.__homeCtx.ranking, window.__homeCtx.sm); } catch (e) {} }, 120000); // v2.21 : classement vivant
-            document.getElementById('news-edit-save').onclick = async () => { try { if (!editingNewsId) { toggleModal('news-edit-modal', false); return; } const t = document.getElementById('news-edit-title').value.trim(); const c = document.getElementById('news-edit-content').value; if (!t || !c) { appAlert('Titre et contenu requis.'); return; } const dv = (document.getElementById('news-edit-date') || {}).value; await setDoc(doc(db, `${basePath}/news/${editingNewsId}`), { title: t, content: c, tags: ((document.getElementById('news-edit-tags') || {}).value || '').trim().split(/[,\s]+/).map(s => s.replace(/^#/, '').trim()).filter(Boolean), ...(dv ? { date: new Date(dv + 'T12:00:00').toISOString() } : {}) }, { merge: true }); toggleModal('news-edit-modal', false); } catch (e) { appAlert('Erreur : ' + e.message); } };
+            // v2.22 : vérification des faits en direct pendant la correction du brouillon
+            let __verifyT = null;
+            const __verifyLive = () => { clearTimeout(__verifyT); __verifyT = setTimeout(() => { try { verifyDraftFacts(); } catch (e) {} }, 400); };
+            document.getElementById('news-edit-content').addEventListener('input', __verifyLive);
+            document.getElementById('news-edit-title').addEventListener('input', __verifyLive);
+            document.getElementById('news-edit-save').onclick = async () => { try {
+                if (!editingNewsId && !pendingDraft) { toggleModal('news-edit-modal', false); return; }
+                const t = document.getElementById('news-edit-title').value.trim(); const c = document.getElementById('news-edit-content').value; if (!t || !c) { appAlert('Titre et contenu requis.'); return; }
+                const dv = (document.getElementById('news-edit-date') || {}).value;
+                const tags = ((document.getElementById('news-edit-tags') || {}).value || '').trim().split(/[,\s]+/).map(s => s.replace(/^#/, '').trim()).filter(Boolean);
+                if (pendingDraft) { // v2.22 : publication du brouillon (création ou remplacement d'un article auto)
+                    const d = pendingDraft; pendingDraft = null;
+                    const nid = d.docId || ('manual_' + Date.now());
+                    await setDoc(doc(db, `${basePath}/news/${nid}`), { ...(d.payload || {}), title: t, content: c, date: dv ? new Date(dv + 'T12:00:00').toISOString() : new Date().toISOString(), tags }, { merge: true });
+                    const lk = document.getElementById('chk-draft-lock');
+                    if (lk && lk.checked && d.payload && d.payload.kind && ART_KINDS.some(a => a.k === d.payload.kind)) {
+                        articleControls[d.payload.kind] = { ...(articleControls[d.payload.kind] || {}), lockUntil: Date.now() + 7 * 24 * 3600e3 };
+                        await saveArticleControls(); try { renderArticleControls(); } catch (e) {}
+                    }
+                    toggleModal('news-edit-modal', false);
+                    appAlert('✅ Article publié dans les Actus !' + (lk && lk.checked && d.payload && d.payload.kind && ART_KINDS.some(a => a.k === d.payload.kind) ? ' Type verrouillé 7 jours.' : ''));
+                    return;
+                }
+                await setDoc(doc(db, `${basePath}/news/${editingNewsId}`), { title: t, content: c, tags, ...(dv ? { date: new Date(dv + 'T12:00:00').toISOString() } : {}) }, { merge: true }); toggleModal('news-edit-modal', false); } catch (e) { appAlert('Erreur : ' + e.message); } };
             onAuthStateChanged(auth, (user) => { if (user) { document.getElementById('app-id-display').textContent = appId; initListeners(); } });
             try { if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth); } catch (error) { console.error("Auth Error:", error); }
             // SECURITE : si l'auth échoue ou ne répond pas (auth anonyme non activée), on démarre quand même après 3s
