@@ -337,6 +337,8 @@
                         <div id="home-team-form" class="flex justify-center items-center space-x-2 min-h-[24px] flex-wrap gap-y-2"></div>
                         <div id="home-advanced-stats"></div>
                         <div id="home-rivals"></div>
+                        <div id="home-scenarios"></div>
+                        <div id="home-live-ranking"></div>
                     </div>
                 </div>
 
@@ -462,6 +464,20 @@
             <h2 class="text-2xl md:text-3xl font-extrabold mb-6 border-b-4 border-lynx-red pb-2 inline-block">Championnat Global</h2>
             <div class="mb-4 text-xs text-gray-500 bg-blue-50 dark:bg-blue-900/20 p-2 rounded flex items-center"><i class="fa-solid fa-info-circle mr-2 text-blue-500"></i> Cliquez sur N'IMPORTE quel match pour entrer le score. Les matchs des Lynx sont en surbrillance.</div>
             
+            <div class="mb-4 flex flex-wrap gap-2 items-center bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-3 rounded-xl shadow-lg">
+                <input id="cal-search" class="flex-1 min-w-[180px] p-2.5 border rounded-xl dark:bg-gray-700 text-sm" placeholder="🔍 Chercher une équipe (ex. Nantes)…">
+                <select id="cal-when" class="p-2.5 border rounded-xl dark:bg-gray-700 text-sm font-bold">
+                    <option value="all">Tous les matchs</option>
+                    <option value="upcoming">À venir</option>
+                    <option value="played">Joués</option>
+                </select>
+                <select id="cal-scope" class="p-2.5 border rounded-xl dark:bg-gray-700 text-sm font-bold">
+                    <option value="all">Toutes les équipes</option>
+                    <option value="lynx">Matchs des Lynx</option>
+                </select>
+                <button id="cal-search-reset" class="text-xs font-bold text-gray-400 hover:text-lynx-red px-2 py-2">Réinitialiser</button>
+            </div>
+
             <div id="maintien-container" class="hidden mb-12">
                  <div class="bg-gradient-to-br from-red-950 via-gray-900 to-black text-white p-2 md:p-6 rounded-2xl shadow-2xl border border-red-900/50 relative overflow-hidden">
                      <div class="absolute top-0 right-0 p-4 opacity-5"><i class="fa-solid fa-shield-halved text-[12rem]"></i></div>
@@ -825,6 +841,10 @@
                     <div id="chart-goals-timing"></div>
                 </div>
                 <div class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-6 rounded-xl shadow-xl">
+                    <h3 class="font-bold text-lg mb-3"><i class="fa-solid fa-landmark text-lynx-red mr-2"></i>Records du club (toutes saisons en base)</h3>
+                    <div id="chart-club-records"></div>
+                </div>
+                <div class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-6 rounded-xl shadow-xl">
                     <h3 class="font-bold text-lg mb-3"><i class="fa-solid fa-tachograph-digital text-lynx-red mr-2"></i>Ratio pts / match d'équipe</h3>
                     <div id="chart-pts-ratio"></div>
                 </div>
@@ -1100,6 +1120,8 @@
             <input id="news-edit-title" class="w-full p-3 border rounded-xl dark:bg-gray-700 font-bold mb-3" placeholder="Titre">
             <textarea id="news-edit-content" class="w-full p-3 border rounded-xl dark:bg-gray-700 h-48 text-sm mb-4" placeholder="Contenu (Markdown)"></textarea>
             <input id="news-edit-tags" class="w-full p-3 border rounded-xl dark:bg-gray-700 text-sm font-bold mb-4" placeholder="Hashtags — ex. #Victoire #LynxDeValence (tri sur le site + partage réseaux)">
+            <label class="block text-xs font-bold text-gray-500 mb-1">Date de l'article (facultatif — corrige la date d'affichage)</label>
+            <input id="news-edit-date" type="date" class="w-full p-3 border rounded-xl dark:bg-gray-700 text-sm mb-4">
             <button id="news-edit-save" class="btn-primary w-full py-2">Enregistrer</button>
         </div>
     </div>
@@ -1246,6 +1268,13 @@
                             <p class="text-[10px] text-gray-400 mb-2">Une par ligne. Si la liste n'est pas vide, le direct tire l'une d'elles au hasard sur chaque but de l'équipe suivie — plus aucun appel à l'IA (0 quota).</p>
                             <textarea id="custom-punchlines" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-20" placeholder="IL L'A MIS OÙ CELUI-LÀ ?!&#10;La patinoire est en feu !"></textarea>
                             <button id="btn-save-punchlines" class="w-full py-2 mt-1 text-xs font-bold rounded-xl border border-gray-300 dark:border-gray-600 hover:border-lynx-red hover:text-lynx-red transition">💾 Enregistrer les punchlines</button>
+                        </div>
+
+                        <!-- v2.21 : dates & verrous des articles automatiques, par type -->
+                        <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                            <h5 class="text-xs font-bold uppercase text-gray-500 mb-1">📅 Dates &amp; verrous des articles</h5>
+                            <p class="text-[10px] text-gray-400 mb-2">Corrige la date du dernier article de chaque type, ou verrouille 7 jours pour empêcher toute régénération automatique (utile après une correction à la main).</p>
+                            <div id="article-controls-list" class="max-h-56 overflow-y-auto border rounded p-2 dark:border-gray-700 bg-white dark:bg-gray-900"></div>
                         </div>
 
                         <div class="mt-4">
@@ -1539,11 +1568,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
+        const mistralApiKey = "";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -1564,7 +1593,7 @@
         };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const basePath = `/artifacts/${appId}/public/data`;
-        const APP_VERSION = "2.17"; // version du site — incrémenter à chaque déploiement (Admin → Diagnostic la compare à la version de l'action GitHub)
+        const APP_VERSION = "2.21"; // version du site — incrémenter à chaque déploiement (Admin → Diagnostic la compare à la version de l'action GitHub)
 
         // ===== WEB PUSH (notifications même site fermé, nécessite hébergement HTTPS + sw.js) =====
         const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
@@ -2043,6 +2072,112 @@
                 if (qA !== qB) return qB - qA;
                 return (Number(b.bp) || 0) - (Number(a.bp) || 0);
             });
+        }
+
+        // v2.21 : scénarios des concurrents — l'impact des prochains matchs des autres équipes sur la position des Lynx
+        function renderHomeScenarios(ranking, matches) {
+            const el = document.getElementById('home-scenarios');
+            if (!el) return;
+            try {
+                const base = sortRankFFHG([...(ranking || [])], activeSeason);
+                const pos0 = base.findIndex(t => normalize(t.team).includes('valence'));
+                if (pos0 < 0) { el.innerHTML = ''; return; }
+                const now = Date.now(), horizon = now + 10 * 24 * 3600e3;
+                const rivals = new Set(base.slice(Math.max(0, pos0 - 4), pos0 + 5).map(t => normalize(t.team)));
+                const up = (matches || []).filter(m => m.season === activeSeason && (!m.type || m.type === 'Saison') && !isMatchFinished(m)
+                    && (new Date(m.date).getTime() || 0) > now - 6 * 3600e3 && (new Date(m.date).getTime() || 0) < horizon
+                    && !(normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence'))
+                    && (rivals.has(normalize(m.homeTeam)) || rivals.has(normalize(m.awayTeam))))
+                    .sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 6);
+                if (!up.length) { el.innerHTML = ''; return; }
+                const lynxPos = (rows) => { const s = sortRankFFHG(rows.map(r => ({ ...r })), activeSeason); const i = s.findIndex(t => normalize(t.team).includes('valence')); return i >= 0 ? i + 1 : null; };
+                const rows = up.map(m => {
+                    const cloneH = base.map(r => ({ ...r })), cloneA = base.map(r => ({ ...r }));
+                    const h = cloneH.find(r => normalize(r.team) === normalize(m.homeTeam)); if (h) h.pts = (h.pts || 0) + 3;
+                    const a = cloneA.find(r => normalize(r.team) === normalize(m.awayTeam)); if (a) a.pts = (a.pts || 0) + 3;
+                    return { m, pH: lynxPos(cloneH), pA: lynxPos(cloneA) };
+                }).filter(r => r.pH != null || r.pA != null);
+                if (!rows.length) { el.innerHTML = ''; return; }
+                const dOpts = { weekday: 'short', day: 'numeric', month: 'short' };
+                const seg = (p, lbl) => p == null ? '' : `<span class="${p < pos0 + 1 ? 'text-green-600 font-bold' : (p > pos0 + 1 ? 'text-red-500' : 'text-gray-500')}">${xmlEsc(lbl)} → Lynx ${p}e</span>`;
+                const line = (r) => {
+                    const when = new Date(r.m.date).toLocaleDateString('fr-FR', dOpts) + ' ' + new Date(r.m.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                    const parts = [];
+                    if (r.pH != null) parts.push(seg(r.pH, 'si ' + r.m.homeTeam + ' gagne'));
+                    if (r.pA != null) parts.push(seg(r.pA, 'si ' + r.m.awayTeam + ' gagne'));
+                    if (!parts.length) return '';
+                    return `<div class="py-1.5 border-t border-gray-100 dark:border-gray-700/60"><div class="text-[11px] font-bold text-gray-500 dark:text-gray-400">⚔️ ${xmlEsc(r.m.homeTeam)} - ${xmlEsc(r.m.awayTeam)} <span class="text-gray-400 font-normal">· ${when}</span></div><div class="text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-3">${parts.join('')}</div></div>`;
+                };
+                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios des concurrents (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Position des Lynx selon les résultats des autres — actuellement ${pos0 + 1}e</p>${rows.map(line).join('')}</div>`;
+            } catch (e) { el.innerHTML = ''; }
+        }
+
+        // v2.21 : classement vivant — les autres matchs du jour suivis en direct sur les pages FFHG (lecture navigateur, comme la page récap)
+        let liveDayCache = { at: 0, list: [] };
+        async function fetchDayLiveScores(dayM) {
+            if (Date.now() - liveDayCache.at < 60e3) return liveDayCache.list;
+            const urls = ['https://www.hockeyfrance.com/competitions/championnats-seniors/d1/calendrier-resultats-pm-d1/', 'https://www.hockeyfrance.com/competitions/championnats-seniors/d2/saison-reguliere/calendrier-resultats-d2/', 'https://www.hockeyfrance.com/competitions/page-live/', 'https://www.hockeyfrance.com/competitions/live/'];
+            const found = [];
+            for (const u of urls) {
+                try {
+                    const html = await liveFetchText(u);
+                    if (!html) continue;
+                    const rx = /rencontre[/=](\d{3,8})/g;
+                    let mm;
+                    while ((mm = rx.exec(html)) !== null) {
+                        const around = html.slice(Math.max(0, mm.index - 700), Math.min(html.length, mm.index + 700));
+                        const teams = [...new Set((dayM || []).flatMap(m => [m.homeTeam, m.awayTeam]).filter(t => t && around.includes(t)))];
+                        if (teams.length !== 2) continue;
+                        const sm = around.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})/g);
+                        if (!sm || !sm.length) continue;
+                        const last = sm[sm.length - 1].match(/(\d{1,2})\s*[-–]\s*(\d{1,2})/);
+                        const iA = around.indexOf(teams[0]), iB = around.indexOf(teams[1]), iS = around.lastIndexOf(sm[sm.length - 1]);
+                        let gA = null, gB = null;
+                        if (iA < iS && iS < iB) { gA = Number(last[1]); gB = Number(last[2]); }
+                        else if (iB < iS && iS < iA) { gA = Number(last[2]); gB = Number(last[1]); }
+                        if (gA == null || gB == null) continue;
+                        found.push({ tA: teams[0], tB: teams[1], gA, gB });
+                    }
+                    if (found.length) break;
+                } catch (e) {}
+            }
+            liveDayCache = { at: Date.now(), list: found };
+            return found;
+        }
+        async function renderLiveStandings(ranking, matches) {
+            const el = document.getElementById('home-live-ranking');
+            if (!el) return;
+            try {
+                const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+                const d1 = new Date(d0.getTime() + 24 * 3600e3);
+                const dayM = (matches || []).filter(m => { const t = new Date(m.date).getTime(); return t >= d0.getTime() && t < d1.getTime() && (!m.type || m.type === 'Saison'); });
+                if (!dayM.length) { el.innerHTML = ''; return; }
+                const others = dayM.filter(m => !(normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence')));
+                if (!others.length) { el.innerHTML = ''; return; }
+                const live = await fetchDayLiveScores(others);
+                const used = [];
+                const sim = others.map(m => {
+                    const sc = live.find(x => !used.includes(x) && ((normalize(x.tA) === normalize(m.homeTeam) && normalize(x.tB) === normalize(m.awayTeam)) || (normalize(x.tA) === normalize(m.awayTeam) && normalize(x.tB) === normalize(m.homeTeam))));
+                    if (!sc) return null;
+                    used.push(sc);
+                    const gh = normalize(sc.tA) === normalize(m.homeTeam) ? sc.gA : sc.gB;
+                    const ga = normalize(sc.tA) === normalize(m.homeTeam) ? sc.gB : sc.gA;
+                    return { m, gh, ga };
+                }).filter(Boolean);
+                if (!sim.length) { el.innerHTML = ''; return; }
+                const clone = (ranking || []).map(r => ({ ...r }));
+                sim.forEach(({ m, gh, ga }) => {
+                    const h = clone.find(r => normalize(r.team) === normalize(m.homeTeam)), a = clone.find(r => normalize(r.team) === normalize(m.awayTeam));
+                    if (!h || !a) return;
+                    if (gh > ga) h.pts = (h.pts || 0) + 3; else if (ga > gh) a.pts = (a.pts || 0) + 3; else { h.pts = (h.pts || 0) + 1; a.pts = (a.pts || 0) + 1; }
+                });
+                const sorted = sortRankFFHG(clone, activeSeason);
+                const li = sorted.findIndex(t => normalize(t.team).includes('valence'));
+                if (li < 0) { el.innerHTML = ''; return; }
+                const from = Math.max(0, li - 2);
+                const win = sorted.slice(from, li + 3);
+                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-red-600 mb-2 text-center uppercase tracking-wider">🔴 En direct — classement si les scores tiennent</h4>${sim.map(({ m, gh, ga }) => `<div class="text-xs text-center text-gray-500 dark:text-gray-400">${xmlEsc(m.homeTeam)} <b class="tabular-nums text-gray-700 dark:text-gray-200">${gh}-${ga}</b> ${xmlEsc(m.awayTeam)} <span class="text-[10px] text-gray-400">(en cours)</span></div>`).join('')}<div class="mt-2 space-y-0.5">${win.map((t, i) => { const p = from + i + 1; return `<div class="flex justify-between text-xs px-2 py-1 rounded ${normalize(t.team).includes('valence') ? 'bg-red-50 dark:bg-red-900/20 font-bold' : ''}"><span>${p}. ${xmlEsc(t.team)}</span><span class="tabular-nums">${t.pts} pts</span></div>`; }).join('')}</div></div>`;
+            } catch (e) { el.innerHTML = ''; }
         }
 
         // Concurrents directs : équipes juste devant/derrière les Lynx au classement — forme et dernier résultat
@@ -2895,6 +3030,90 @@
         }
 
         // --- NEW: ADVANCED PLAYOFFS RENDERER ---
+        // v2.21 : dates & verrous des articles automatiques — par type (result, preview, month, poule, ev)
+        let articleControls = {};
+        const ART_KINDS = [ { k: 'result', lbl: '📊 Résultat' }, { k: 'preview', lbl: '🔮 Avant-match' }, { k: 'month', lbl: '📅 Récap mensuel' }, { k: 'poule', lbl: '🏆 Panorama' }, { k: 'stats', lbl: '📈 Stats de la semaine' } ];
+        const artLock = (k) => { const c = articleControls[k]; return !!(c && c.lockUntil && new Date(c.lockUntil).getTime() > Date.now()); };
+        async function saveArticleControls() { try { await setDoc(doc(db, `${basePath}/settings/general`), { articleControls }, { merge: true }); } catch (e) {} }
+        function renderArticleControls() {
+            const el = document.getElementById('article-controls-list');
+            if (!el) return;
+            try {
+                el.innerHTML = ART_KINDS.map(({ k, lbl }) => {
+                    const arts = (newsList || []).filter(n => n.kind === k).sort((a, b) => new Date(b.date) - new Date(a.date));
+                    const last = arts[0];
+                    const locked = artLock(k);
+                    return `<div class="flex flex-wrap items-center gap-2 py-2 border-t border-gray-100 dark:border-gray-700/60">
+                        <span class="text-xs font-bold min-w-[130px]">${lbl}</span>
+                        <span class="text-[11px] text-gray-500 min-w-[110px]">${last ? new Date(last.date).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'aucun article'}</span>
+                        <input type="date" data-kind="${k}" class="art-date-input p-1 border rounded-lg dark:bg-gray-700 text-xs" value="${last ? new Date(last.date).toISOString().slice(0, 10) : ''}">
+                        <button data-kind="${k}" class="art-date-save text-[11px] font-bold px-2 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 transition">OK</button>
+                        <button data-kind="${k}" class="art-lock-btn text-[11px] font-bold px-2 py-1 rounded-lg transition ${locked ? 'bg-amber-500 text-white' : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300'}">${locked ? '🔒 verrouillé' : 'Verrouiller 7 j'}</button>
+                    </div>`;
+                }).join('');
+                el.querySelectorAll('.art-date-save').forEach(b => b.onclick = async () => {
+                    const k = b.dataset.kind;
+                    const inp = el.querySelector(`.art-date-input[data-kind="${k}"]`);
+                    const v = inp && inp.value;
+                    if (!v) { appAlert('Choisis une date.'); return; }
+                    const arts = (newsList || []).filter(n => n.kind === k).sort((a, b) => new Date(b.date) - new Date(a.date));
+                    const last = arts[0];
+                    if (!last) { appAlert('Aucun article de ce type à dater.'); return; }
+                    try { await setDoc(doc(db, `${basePath}/news/${last.id}`), { date: new Date(v + 'T12:00:00').toISOString() }, { merge: true }); appAlert('Date mise à jour.'); } catch (e) { appAlert('Erreur : ' + e.message); }
+                });
+                el.querySelectorAll('.art-lock-btn').forEach(b => b.onclick = async () => {
+                    const k = b.dataset.kind;
+                    if (artLock(k)) articleControls[k] = { ...(articleControls[k] || {}), lockUntil: 0 };
+                    else articleControls[k] = { ...(articleControls[k] || {}), lockUntil: Date.now() + 7 * 24 * 3600e3 };
+                    await saveArticleControls();
+                    renderArticleControls();
+                });
+            } catch (e) {}
+        }
+
+        // v2.21 : records du club — toutes saisons en base, zéro saisie
+        function renderClubRecords() {
+            const el = document.getElementById('chart-club-records');
+            if (!el) return;
+            try {
+                const done = (allMatches || []).filter(m => isMatchFinished(m) && (normalize(m.homeTeam || '').includes('valence') || normalize(m.awayTeam || '').includes('valence')));
+                if (!done.length) { el.innerHTML = '<div class="text-xs text-gray-400 italic text-center p-2">Aucun match en base.</div>'; return; }
+                const isL = (m) => normalize(m.homeTeam || '').includes('valence');
+                const gf = (m) => isL(m) ? m.scoreHome : m.scoreAway, ga = (m) => isL(m) ? m.scoreAway : m.scoreHome;
+                const diff = (m) => (Number(gf(m)) || 0) - (Number(ga(m)) || 0);
+                const tot = (m) => (Number(gf(m)) || 0) + (Number(ga(m)) || 0);
+                const bigW = done.reduce((b, m) => (!b || diff(m) > diff(b)) ? m : b, null);
+                const bigS = done.reduce((b, m) => (!b || tot(m) > tot(b)) ? m : b, null);
+                let cur = 0, best = 0, bestEnd = null;
+                [...done].sort((a, b) => new Date(a.date) - new Date(b.date)).forEach(m => { if (diff(m) > 0) { cur++; if (cur > best) { best = cur; bestEnd = m; } } else cur = 0; });
+                const byS = {};
+                done.forEach(m => { const s = m.season || '?'; byS[s] = byS[s] || { v: 0, n: 0, d: 0, pts: 0, mj: 0 };
+                    const w = diff(m) > 0, nl = (Number(gf(m)) || 0) === (Number(ga(m)) || 0);
+                    if (w) byS[s].v++; else if (nl) byS[s].n++; else byS[s].d++;
+                    byS[s].pts += isL(m) ? matchPoints(gf(m), ga(m), m.isProl) : matchPoints(ga(m), gf(m), m.isProl); byS[s].mj++; });
+                const seasons = Object.keys(byS).sort();
+                const fmtM = (m) => `${isL(m) ? 'vs' : '@'} ${xmlEsc(isL(m) ? m.awayTeam : m.homeTeam)} <b class="tabular-nums">${gf(m)}-${ga(m)}</b>${m.isProl ? ' (ap)' : ''} <span class="text-gray-400 font-normal">— ${new Date(m.date).toLocaleDateString('fr-FR')}</span>`;
+                el.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                    <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl text-center"><div class="text-[10px] uppercase font-bold text-green-600 mb-1">Plus large victoire</div><div class="text-sm">${fmtM(bigW)}</div></div>
+                    <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-center"><div class="text-[10px] uppercase font-bold text-blue-600 mb-1">Plus gros score</div><div class="text-sm">${fmtM(bigS)}</div></div>
+                    <div class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-center"><div class="text-[10px] uppercase font-bold text-amber-600 mb-1">Série de victoires</div><div class="text-sm font-black">${best} matchs d'affilée</div><div class="text-[11px] text-gray-500">${bestEnd ? 'jusqu\u2019au ' + new Date(bestEnd.date).toLocaleDateString('fr-FR') : ''}</div></div>
+                </div>
+                <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="ranking-header"><th class="p-2">Saison</th><th class="p-2 text-center">MJ</th><th class="p-2 text-center">V</th><th class="p-2 text-center">N</th><th class="p-2 text-center">D</th><th class="p-2 text-center">Pts</th></tr></thead><tbody>
+                ${seasons.map(s => `<tr class="border-t border-gray-100 dark:border-gray-700/60"><td class="p-2 font-bold">${s === activeSeason ? xmlEsc(s) + ' 🦁' : xmlEsc(s)}</td><td class="p-2 text-center tabular-nums">${byS[s].mj}</td><td class="p-2 text-center text-green-600 font-bold tabular-nums">${byS[s].v}</td><td class="p-2 text-center tabular-nums">${byS[s].n}</td><td class="p-2 text-center text-red-500 font-bold tabular-nums">${byS[s].d}</td><td class="p-2 text-center font-black tabular-nums">${byS[s].pts}</td></tr>`).join('')}
+                </tbody></table></div>${seasons.length <= 1 ? '<p class="text-[10px] text-gray-400 text-center mt-2">Les saisons précédentes apparaîtront ici dès que leurs données seront en base.</p>' : ''}`;
+            } catch (e) { el.innerHTML = ''; }
+        }
+
+        let calFilters = { q: '', when: 'all', scope: 'all' };
+        function initCalSearch() {
+            const q = document.getElementById('cal-search'), w = document.getElementById('cal-when'), s = document.getElementById('cal-scope'), r = document.getElementById('cal-search-reset');
+            if (!q || q.dataset.wired) return; q.dataset.wired = '1';
+            q.oninput = () => { calFilters.q = q.value; try { renderFullCal(sMatches); } catch (e) {} };
+            if (w) w.onchange = () => { calFilters.when = w.value; try { renderFullCal(sMatches); } catch (e) {} };
+            if (s) s.onchange = () => { calFilters.scope = s.value; try { renderFullCal(sMatches); } catch (e) {} };
+            if (r) r.onclick = () => { calFilters = { q: '', when: 'all', scope: 'all' }; q.value = ''; if (w) w.value = 'all'; if (s) s.value = 'all'; try { renderFullCal(sMatches); } catch (e) {} };
+        }
+
         function renderFullCal(list) {
              const playoffs = list.filter(m => m.type === 'Playoff' || m.type === 'Playoffs' || (m.type && m.type !== 'Saison' && !/maintien/i.test(m.type))).sort((a,b)=>new Date(a.date)-new Date(b.date));
              const regular = list.filter(m => !m.type || m.type === 'Saison').sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -3023,9 +3242,17 @@
              }
 
              const el = document.getElementById('full-matches-list');
-             if(!regular.length) { el.innerHTML = '<div class="p-4 italic text-gray-500">Vide</div>'; }
-             else { const rIdx = firstReturnIdx(regular); el.innerHTML = regular.map((m, i) => (i === rIdx ? retourMarkerHtml : '') + generateMatchRow(m, false)).join(''); }
-             markNextMatchRow(el, regular);
+             const cf = calFilters, nowMs = Date.now();
+             const fRegular = regular.filter(m => {
+                 if (cf.scope === 'lynx' && !(normalize(m.homeTeam || '').includes('valence') || normalize(m.awayTeam || '').includes('valence'))) return false;
+                 if (cf.when === 'upcoming' && (isMatchFinished(m) || (new Date(m.date).getTime() || 0) + 3 * 3600e3 < nowMs)) return false;
+                 if (cf.when === 'played' && !isMatchFinished(m)) return false;
+                 if (cf.q) { const nq = normalize(cf.q); if (!normalize(m.homeTeam || '').includes(nq) && !normalize(m.awayTeam || '').includes(nq)) return false; }
+                 return true;
+             });
+             if(!fRegular.length) { el.innerHTML = '<div class="p-4 italic text-gray-500">Aucun match ne correspond à cette recherche.</div>'; }
+             else { const rIdx = firstReturnIdx(fRegular); el.innerHTML = fRegular.map((m, i) => (i === rIdx ? retourMarkerHtml : '') + generateMatchRow(m, false)).join(''); }
+             markNextMatchRow(el, fRegular);
              
              if(window.attachQuickScoreEvents) window.attachQuickScoreEvents();
         }
@@ -3466,6 +3693,7 @@
             document.getElementById('news-edit-title').value = n.title || '';
             document.getElementById('news-edit-content').value = n.content || '';
             const tgEl = document.getElementById('news-edit-tags'); if (tgEl) tgEl.value = Array.isArray(n.tags) ? n.tags.join(' ') : (n.tags || '');
+            const dtEl = document.getElementById('news-edit-date'); if (dtEl) dtEl.value = n.date ? new Date(n.date).toISOString().slice(0, 10) : ''; // v2.21
             toggleModal('news-edit-modal', true);
         }
         // Lu / non-lu des actus (par appareil, localStorage) — v2.17 : tout article non ouvert est « non lu » par défaut
@@ -4224,6 +4452,8 @@
             renderHomeExtremes(mainRanking); 
             renderForm(done);
             renderHomeRivals(mainRanking);
+            renderHomeScenarios(mainRanking, sMatches); // v2.21 : scénarios des concurrents
+            window.__homeCtx = { ranking: mainRanking, sm: sMatches }; setTimeout(() => { try { renderLiveStandings(mainRanking, sMatches); } catch (e) {} }, 900); // v2.21 : classement vivant
             renderSeriesRecords(sMatches, mainRanking);
             setTimeout(() => { try { updateHomeForecast(); } catch (e) {} }, 400); // v2.21 : proba playoffs + courbe de fiabilité (après peinture, moteur en cache)
             renderMatchDay(next, sMatches, mainRanking);
@@ -5100,12 +5330,17 @@
                     if (pronTxt) pronTxt = '### Notre pronostic\n' + pronTxt + '\n';
                 } catch (e) { console.warn('bilan pronostic', e); }
                 const pressTxt = buildPressContext(5, 8); // échos presse récents : citation sobre, opinions nuancées, rumeurs interdites
+                let dayTxt = '';
+                try { // v2.21 : contexte journée — les autres résultats du jour, pour situer l'impact au classement
+                    const sameDay = allMatches.filter(x => x && x.id !== m.id && x.season === m.season && isMatchFinished(x) && (!x.type || x.type === 'Saison') && new Date(x.date).toDateString() === new Date(m.date).toDateString());
+                    if (sameDay.length) dayTxt = sameDay.map(x => `- ${x.homeTeam} ${x.scoreHome}-${x.scoreAway}${x.isProl ? ' (ap)' : ''}`).join('\n');
+                } catch (e) {}
                 const title = `${win ? (prol ? 'Victoire arrachée' : 'Victoire') : (prol ? 'Défaite en prolongation' : 'Défaite')} des Lynx ${lSc}-${oSc} ${win ? 'contre' : 'face à'} ${opp}`;
                 const fallback = `Les Lynx de Valence ${win ? (prol ? 'arrachent la victoire' : 's\'imposent') : (prol ? 's\'inclinent au terme d\'une bataille serrée' : 's\'inclinent')} face à ${opp} sur le score de **${lSc} à ${oSc}**${prol ? ' après prolongation' : ''}. Match de ${phase.toLowerCase()}, saison ${activeSeason}.\n\n${gameTxt || ''}${rankTxt}${pronTxt ? pronTxt + '\n' : ''}`;
                 let aiTxt = null;
                 try {
                     aiTxt = await aiCompose(
-                        `Rédige l'article du match de hockey : Lynx de Valence ${lSc}-${oSc} ${opp}${prol ? ' (après prolongation)' : ''}, ${phase}, le ${new Date(m.date).toLocaleDateString('fr-FR')} (saison ${activeSeason}).${m.note ? ' Note de match : ' + m.note : ''}\n\nContexte classement :\n${rankTxt || 'Classement non applicable (playoffs/maintien).'}\n\nDéroulé réel du match (chronologie des buts et pénalités — SEULE source autorisée sur les joueurs) :\n${gameTxt || 'Déroulé détaillé NON DISPONIBLE : n\'évoque alors AUCUN buteur, AUCUN nom de joueur et AUCUNE action précise du match.'}\n\nVérification de notre pronostic (mentionne-la honnêtement dans l'article, réussi ou raté) :\n${pronTxt || 'Aucun pronostic n\'avait été publié pour ce match : n\'en parle pas.'}\n\nÉchos presse éventuels (citation sobre, 1 mention maximum, cf. règles presse/forums) :\n${pressTxt || 'aucun — n\'en parle pas.'}`,
+                        `Rédige l'article du match de hockey : Lynx de Valence ${lSc}-${oSc} ${opp}${prol ? ' (après prolongation)' : ''}, ${phase}, le ${new Date(m.date).toLocaleDateString('fr-FR')} (saison ${activeSeason}).${m.note ? ' Note de match : ' + m.note : ''}\n\nContexte classement :\n${rankTxt || 'Classement non applicable (playoffs/maintien).'}\n\nAutres résultats du jour (contexte journée — sers-t'en pour dire sobrement ce que ce résultat change pour les Lynx au classement, sans rien inventer) :\n${dayTxt || 'aucun autre match joué ce jour — n\'en parle pas.'}\n\nDéroulé réel du match (chronologie des buts et pénalités — SEULE source autorisée sur les joueurs) :\n${gameTxt || 'Déroulé détaillé NON DISPONIBLE : n\'évoque alors AUCUN buteur, AUCUN nom de joueur et AUCUNE action précise du match.'}\n\nVérification de notre pronostic (mentionne-la honnêtement dans l'article, réussi ou raté) :\n${pronTxt || 'Aucun pronostic n\'avait été publié pour ce match : n\'en parle pas.'}\n\nÉchos presse éventuels (citation sobre, 1 mention maximum, cf. règles presse/forums) :\n${pressTxt || 'aucun — n\'en parle pas.'}`,
                         `Tu es le rédacteur du site officiel des Lynx de Valence (hockey sur glace, France). Rédige un article de match vivant de 120 à 200 mots, en français, ton passionné, en Markdown sans titre ni heading. RÈGLE ABSOLUE — AUCUNE INVENTION : ne cite un joueur, un buteur, un temps de but, une assist ou un événement QUE s'il figure mot pour mot dans les données fournies (déroulé, classement, note de match). Si le déroulé est marqué NON DISPONIBLE, n'évoque aucun buteur ni aucune action précise et appuie-toi uniquement sur le score et le contexte. Ne fais aucune recherche internet et n'ajoute aucune donnée externe : les seules informations autorisées sont celles de ce message. Un article sobre mais exact vaut mille fois mieux qu'un article vivant mais faux.\n\n${PRESS_RULES}`
                     );
                 } catch (e) { aiTxt = null; }
@@ -5119,6 +5354,7 @@
         async function generatePreviewArticle(force) {
             try {
                 if (!db || fbLoadFailed) return 'nodb';
+                if (!force && artLock('preview')) return 'locked'; // v2.21 : verrou 7 jours (le forçage manuel passe toujours)
                 const now = new Date();
                 const cands = allMatches.filter(m => !isMatchFinished(m) && (normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence')) && new Date(m.date) >= now).sort((a, b) => new Date(a.date) - new Date(b.date));
                 const m = cands[0];
@@ -5287,6 +5523,7 @@
                 const seasonRoster = roster.filter(p => p.season === activeSeason);
                 const rosterGoals = seasonRoster.reduce((s, p) => s + (Number(p.goals) || 0), 0);
                 const statsOk = !seasonRoster.length || rosterGoals + 1 >= lynxGoalsSeason; // +1 de tolérance : un but non attribuable (csc adverse) ne bloque pas la publication
+                if (artLock('result')) return; // v2.21 : verrou 7 jours — pas de régénération automatique
                 for (const m of done) {
                     const docId = `auto_result_${hashId(m.id)}`;
                     if (newsList.some(n => n.id === docId)) continue;
@@ -5317,6 +5554,7 @@
                 const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
                 const monthKey = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
                 const monthLabel = prev.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                if (artLock('month')) return 'locked'; // v2.21 : verrou 7 jours
                 const docId = `auto_month_${hashId(activeSeason + '_' + monthKey)}`;
                 if (newsList.some(n => n.id === docId)) return 'exists';
                 const start = new Date(prev.getFullYear(), prev.getMonth(), 1).getTime();
@@ -5938,6 +6176,7 @@ ${cards}
             renderChartBars('chart-league-pts', leaguePlayers.filter(p => p.season === activeSeason).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0)).slice(0, 8).map(p => ({ label: `${p.name} (${(p.team || '?').slice(0, 14)})`, value: Number(p.pts) || 0, hl: normalize(p.team).includes('valence') })));
             renderSpecialTeams();
             try { renderGoalsTiming(); } catch (e) {} // v2.21 : heatmap des buts par tranche de 10 min
+            try { renderClubRecords(); } catch (e) {} // v2.21 : records du club toutes saisons
             renderLynxLeaderboard();
             // v2.16 : ratio points / match d'équipe joué (densité du calendrier — compare les pointeurs à égalité de matchs)
             const lynxPlayed = allMatches.filter(m => m.season === activeSeason && /valence/i.test(`${m.homeTeam || ''}${m.awayTeam || ''}`) && isMatchFinished(m)).length;
@@ -6469,7 +6708,8 @@ ${cards}
                         }
                     }
                     if(Array.isArray(d.rssKeywords)) rssKeywords = d.rssKeywords;
-                    if(d.rssTeamAliases && typeof d.rssTeamAliases === 'object' && !Array.isArray(d.rssTeamAliases)) rssTeamAliases = d.rssTeamAliases; 
+                    if(d.rssTeamAliases && typeof d.rssTeamAliases === 'object' && !Array.isArray(d.rssTeamAliases)) rssTeamAliases = d.rssTeamAliases;
+                    if(d.articleControls && typeof d.articleControls === 'object' && !Array.isArray(d.articleControls)) { articleControls = d.articleControls; try { renderArticleControls(); } catch (e) {} } // v2.21 : verrous articles
                     if(typeof d.rssPublicUrl === 'string' && d.rssPublicUrl) { rssPublicUrl = d.rssPublicUrl; const inp = document.getElementById('rss-public-url'); if (inp && !inp.value) inp.value = rssPublicUrl; }
                     if(typeof d.rssAutoPublish === 'boolean') { rssAutoPublish = d.rssAutoPublish; const chk = document.getElementById('chk-auto-publish-rss'); if (chk) chk.checked = rssAutoPublish; }
                     if(typeof d.rssLastPublishedAt === 'string') { rssLastPublishedAt = d.rssLastPublishedAt; updateRssPublishStatus(); }
@@ -6502,7 +6742,7 @@ ${cards}
             let ppInit = false;
             onSnapshot(doc(db, `${basePath}/settings/player-photos`), (d) => { const ppTxt = d.exists() ? (d.data().text || '') : ''; playerPhotos = parsePlayerPhotos(ppTxt); if (!ppInit) { ppInit = true; const ppTa = document.getElementById('player-photos-text'); if (ppTa) ppTa.value = ppTxt; } scheduleUI(); });
             onSnapshot(doc(db, `${basePath}/settings/bot`), (docSnap) => { if(docSnap.exists()) botSettings = docSnap.data(); else botSettings = { tone: 'fan' }; scheduleUI(); }); 
-            onSnapshot(collection(db, `${basePath}/news`), (s) => { const nd = s.docs.map(d=>({...d.data(), id:d.id})); try { notifyNewArticles(nd); } catch(e) {} newsList = nd; scheduleUI(); try { maybeAutoPublishRss(); } catch(e) {} });
+            onSnapshot(collection(db, `${basePath}/news`), (s) => { const nd = s.docs.map(d=>({...d.data(), id:d.id})); try { notifyNewArticles(nd); } catch(e) {} newsList = nd; scheduleUI(); try { renderArticleControls(); } catch(e) {} try { maybeAutoPublishRss(); } catch(e) {} });
             onSnapshot(collection(db, `${basePath}/context`), (s) => { knowledgeBase = s.docs.map(d=>({...d.data(), id:d.id})); scheduleUI(); });
             // (Pronos du public supprimés : plus d'écoute ni de saisie ; les anciennes données restent purgables/exportables via l'onglet Base de données)
             onSnapshot(collection(db, `${basePath}/bot-history`), (s) => { botHistory = s.docs.map(d=>({...d.data(), id:d.id})).sort((a,b)=>new Date(b.date)-new Date(a.date)); scheduleUI(); });
@@ -7721,7 +7961,7 @@ ${cards}
                 const btn = document.getElementById('live-btn-detect');
                 const inp = document.getElementById('live-match-url');
                 if (btn) { btn.disabled = true; btn.innerHTML = '🔍 Recherche…'; }
-                const urls = ['https://www.hockeyfrance.com/competitions/page-live/', 'https://www.hockeyfrance.com/competitions/live/'];
+                const urls = ['https://www.hockeyfrance.com/competitions/championnats-seniors/d1/calendrier-resultats-pm-d1/', 'https://www.hockeyfrance.com/competitions/championnats-seniors/d2/saison-reguliere/calendrier-resultats-d2/', 'https://www.hockeyfrance.com/competitions/page-live/', 'https://www.hockeyfrance.com/competitions/live/'];
                 let found = null, lastErr = null;
                 for (const u of urls) {
                     try {
@@ -8821,7 +9061,9 @@ ${cards}
             if (sInp) sInp.oninput = (e) => runUniversalSearch(e.target.value); document.getElementById('close-admin-modal').onclick = () => toggleModal('admin-modal', false); document.getElementById('open-admin-modal').onclick = () => tryOpenAdmin(); document.getElementById('open-admin-modal-mobile').onclick = () => tryOpenAdmin(); try { wireAdminSecurity(); } catch (e) { console.warn('Admin security non branchée :', e); } document.getElementById('close-bot-modal').onclick = () => toggleModal('bot-modal', false); document.getElementById('open-bot-modal').onclick = () => toggleModal('bot-modal', true); document.getElementById('open-bot-modal-mobile').onclick = () => toggleModal('bot-modal', true);
             // v2.17 : modale de modification d'article (depuis les actus, admin déverrouillé)
             document.getElementById('close-news-edit-modal').onclick = () => toggleModal('news-edit-modal', false);
-            document.getElementById('news-edit-save').onclick = async () => { try { if (!editingNewsId) { toggleModal('news-edit-modal', false); return; } const t = document.getElementById('news-edit-title').value.trim(); const c = document.getElementById('news-edit-content').value; if (!t || !c) { appAlert('Titre et contenu requis.'); return; } await setDoc(doc(db, `${basePath}/news/${editingNewsId}`), { title: t, content: c, tags: ((document.getElementById('news-edit-tags') || {}).value || '').trim().split(/[,\s]+/).map(s => s.replace(/^#/, '').trim()).filter(Boolean) }, { merge: true }); toggleModal('news-edit-modal', false); } catch (e) { appAlert('Erreur : ' + e.message); } };
+            initCalSearch(); // v2.21 : filtres du calendrier général
+            setInterval(() => { try { const hs = document.getElementById('home-summary'); if (hs && hs.classList.contains('active') && window.__homeCtx) renderLiveStandings(window.__homeCtx.ranking, window.__homeCtx.sm); } catch (e) {} }, 120000); // v2.21 : classement vivant
+            document.getElementById('news-edit-save').onclick = async () => { try { if (!editingNewsId) { toggleModal('news-edit-modal', false); return; } const t = document.getElementById('news-edit-title').value.trim(); const c = document.getElementById('news-edit-content').value; if (!t || !c) { appAlert('Titre et contenu requis.'); return; } const dv = (document.getElementById('news-edit-date') || {}).value; await setDoc(doc(db, `${basePath}/news/${editingNewsId}`), { title: t, content: c, tags: ((document.getElementById('news-edit-tags') || {}).value || '').trim().split(/[,\s]+/).map(s => s.replace(/^#/, '').trim()).filter(Boolean), ...(dv ? { date: new Date(dv + 'T12:00:00').toISOString() } : {}) }, { merge: true }); toggleModal('news-edit-modal', false); } catch (e) { appAlert('Erreur : ' + e.message); } };
             onAuthStateChanged(auth, (user) => { if (user) { document.getElementById('app-id-display').textContent = appId; initListeners(); } });
             try { if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth); } catch (error) { console.error("Auth Error:", error); }
             // SECURITE : si l'auth échoue ou ne répond pas (auth anonyme non activée), on démarre quand même après 3s
