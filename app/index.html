@@ -2151,22 +2151,36 @@
                 };
                 const applyAdj = (adj) => lynxPos(base.map(r => ({ ...r, pts: (r.pts || 0) + (adj.get(normalize(r.team)) || 0) })));
                 const posTxt = (p) => p == null ? '?' : p + (p === 1 ? 'ᵉʳ' : 'e');
-                const detProb = allUp.map(m => { const pr = pred(m); const w = pr ? (pr.expWinner === 'H' ? m.homeTeam : m.awayTeam) : (rankIdx(m.homeTeam) <= rankIdx(m.awayTeam) ? m.homeTeam : m.awayTeam); const l = w === m.homeTeam ? m.awayTeam : m.homeTeam; return `${w} bat ${l}`; }).join(' · ') + (model ? '' : ' (modèle indisponible : favori au classement)');
-                let eLynxTxt = '';
-                if (lynxNext) { const pr = pred(lynxNext); if (pr && pr.ePts) eLynxTxt = ` — Lynx ${((normalize(lynxNext.homeTeam).includes('valence') ? pr.ePts[0] : pr.ePts[1]) || 0).toFixed(1)} pt(s) attendus`; }
-                const oppL = lynxNext ? (normalize(lynxNext.homeTeam).includes('valence') ? lynxNext.awayTeam : lynxNext.homeTeam) : '';
+                // v2.22 : détail par match — quel résultat est nécessaire dans CHAQUE rencontre pour le scénario
+                const dOpts = { weekday: 'short', day: 'numeric', month: 'short' };
+                const mLabel = (m) => `${isLynxM(m) ? '🦁' : '⚔️'} ${xmlEsc(m.homeTeam)} - ${xmlEsc(m.awayTeam)} <span class="text-gray-400">(${new Date(m.date).toLocaleDateString('fr-FR', dOpts)})</span>`;
+                const betterOf = (m) => rankIdx(m.homeTeam) <= rankIdx(m.awayTeam) ? m.homeTeam : m.awayTeam;
+                const otherOf = (m) => betterOf(m) === m.homeTeam ? m.awayTeam : m.homeTeam;
+                const mOutcome = (m, kind) => {
+                    const pr = pred(m);
+                    if (kind === 'ideal') return isLynxM(m) ? '<b>victoire des Lynx</b>' : `victoire de <b>${xmlEsc(otherOf(m))}</b> (${xmlEsc(betterOf(m))} perd)`;
+                    if (kind === 'worst') return isLynxM(m) ? '<b>défaite des Lynx</b>' : `victoire de <b>${xmlEsc(betterOf(m))}</b>`;
+                    if (kind === 'prob') {
+                        const w = pr ? (pr.expWinner === 'H' ? m.homeTeam : m.awayTeam) : betterOf(m);
+                        const pct = pr ? ` <span class="text-gray-400">(${Math.round(Math.max(pr.pHomeWin, pr.pAwayWin) * 100)} %)</span>` : '';
+                        return `<b>${xmlEsc(w)}</b> gagne${pct}`;
+                    }
+                    if (pr && pr.ePts) return `pts attendus : <b>${xmlEsc(m.homeTeam)} ${pr.ePts[0].toFixed(1)}</b> · <b>${xmlEsc(m.awayTeam)} ${pr.ePts[1].toFixed(1)}</b>`;
+                    return `victoire de <b>${xmlEsc(betterOf(m))}</b> (favori au classement)`;
+                };
+                const detList = (kind) => `<div class="mt-1 space-y-0.5">${allUp.map(m => `<div class="text-[10px] text-gray-500 dark:text-gray-400 leading-snug">${mLabel(m)} → ${mOutcome(m, kind)}</div>`).join('')}</div>`;
                 const scenarios = [
-                    { ico: '🏆', lbl: 'Scénario idéal', adj: buildAdj(3, 'betterLoses'), det: `Victoire des Lynx${oppL ? ' contre ' + oppL : ''} · partout ailleurs, l'équipe la mieux classée s'incline` },
-                    { ico: '🔮', lbl: 'Le plus probable', adj: probAdj(), det: detProb },
-                    { ico: '📊', lbl: 'Le moyen', adj: expAdj(), det: `Chaque équipe marque ses points attendus par le modèle${eLynxTxt}` },
-                    { ico: '💀', lbl: 'Pire scénario', adj: buildAdj(0, 'betterWins'), det: `Défaite des Lynx${oppL ? ' contre ' + oppL : ''} · partout ailleurs, l'équipe la mieux classée gagne` }
+                    { ico: '🏆', lbl: 'Scénario idéal', adj: buildAdj(3, 'betterLoses'), kind: 'ideal' },
+                    { ico: '🔮', lbl: 'Le plus probable', adj: probAdj(), kind: 'prob' },
+                    { ico: '📊', lbl: 'Le moyen', adj: expAdj(), kind: 'exp' },
+                    { ico: '💀', lbl: 'Pire scénario', adj: buildAdj(0, 'betterWins'), kind: 'worst' }
                 ];
                 const rowsHtml = scenarios.map(sc => {
                     const p = applyAdj(sc.adj);
                     const cls = p == null ? 'text-gray-500' : (p < pos0 + 1 ? 'text-green-600 dark:text-green-400' : (p > pos0 + 1 ? 'text-red-500 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'));
-                    return `<div class="py-2 border-t border-gray-100 dark:border-gray-700/60 flex items-start gap-2"><span class="text-base leading-5">${sc.ico}</span><div class="flex-1 min-w-0"><div class="flex items-baseline gap-2 flex-wrap"><span class="text-xs font-bold">${sc.lbl}</span><span class="text-sm font-black ${cls}">→ Lynx ${posTxt(p)}</span></div><div class="text-[10px] text-gray-400 leading-snug">${xmlEsc(sc.det)}</div></div></div>`;
+                    return `<div class="py-2 border-t border-gray-100 dark:border-gray-700/60 flex items-start gap-2"><span class="text-base leading-5">${sc.ico}</span><div class="flex-1 min-w-0"><div class="flex items-baseline gap-2 flex-wrap"><span class="text-xs font-bold">${sc.lbl}</span><span class="text-sm font-black ${cls}">→ Lynx ${posTxt(p)}</span></div>${detList(sc.kind)}</div></div>`;
                 }).join('');
-                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Place des Lynx en combinant tous les résultats — actuellement ${pos0 + 1}${pos0 === 0 ? 'ᵉʳ' : 'e'} · calculé par le modèle du site (données internes, aucune IA)</p>${rowsHtml}</div>`;
+                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Place des Lynx en combinant tous les résultats — actuellement ${pos0 + 1}${pos0 === 0 ? 'ᵉʳ' : 'e'} · calculé par le modèle du site${model ? '' : ' (modèle indisponible : favori au classement)'}, aucune IA</p>${rowsHtml}</div>`;
             } catch (e) { el.innerHTML = ''; }
         }
 
