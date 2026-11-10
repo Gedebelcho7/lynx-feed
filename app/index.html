@@ -341,7 +341,7 @@
                 </div>
 
                 <!-- Actus : à droite, même hauteur que la rangée matchs, liste déroulante à l'intérieur -->
-                <div id="home-news-container" class="lg:col-span-2 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-5 rounded-xl shadow-xl border border-gray-100/50 dark:border-gray-700/50 flex flex-col h-[420px] lg:h-auto">
+                <div id="home-news-container" class="lg:col-span-2 lg:row-span-2 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-5 rounded-xl shadow-xl border border-gray-100/50 dark:border-gray-700/50 flex flex-col h-[420px] lg:h-auto">
                     <div class="flex justify-between items-center mb-3 border-b-4 border-lynx-red pb-2">
                         <h3 class="text-xl font-extrabold flex items-center"><i class="fa-solid fa-newspaper mr-2 text-lynx-red"></i> Actualités</h3>
                     </div>
@@ -351,7 +351,7 @@
                 </div>
 
                 <!-- Météo de l'équipe + carte coach IA -->
-                <div class="lg:col-span-2 space-y-6">
+                <div class="lg:col-span-2 lg:col-start-4 space-y-6">
                     <div id="morale-container"></div>
 
                     <!-- STRUCTURED BOT PREDICTION CARD (Home) - CLICKABLE -->
@@ -403,10 +403,18 @@
                              </div>
                          </div>
                     </div>
+
+                    <!-- Useful Links (Dynamic) -->
+                    <div class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-lg border-l-4 border-blue-500">
+                        <h3 class="text-lg font-extrabold mb-3 text-gray-700 dark:text-gray-200 flex items-center"><i class="fa-solid fa-link mr-2 text-blue-500"></i> Liens Utiles</h3>
+                        <div id="useful-links-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-2 text-sm font-bold">
+                            <div class="col-span-3 text-center text-gray-400 italic">Chargement...</div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- SÉRIES & EXTRÊMES -->
-                <div class="lg:col-span-3 space-y-6">
+                <div class="lg:col-span-3 lg:col-start-1 space-y-6">
                     <!-- SERIES & RECORDS (v2.13, automatique) -->
                     <div id="home-series-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-amber-500 hidden">
                         <h3 class="text-sm font-bold uppercase text-gray-500 mb-3 tracking-widest text-center">📈 Séries &amp; records de la saison</h3>
@@ -438,14 +446,6 @@
                                 <div class="text-[11px] text-gray-500 font-bold" id="home-worst-defense-val">-</div>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Useful Links (Dynamic) -->
-                <div class="lg:col-span-2 bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-lg border-l-4 border-blue-500">
-                    <h3 class="text-lg font-extrabold mb-3 text-gray-700 dark:text-gray-200 flex items-center"><i class="fa-solid fa-link mr-2 text-blue-500"></i> Liens Utiles</h3>
-                    <div id="useful-links-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-2 text-sm font-bold">
-                        <div class="col-span-3 text-center text-gray-400 italic">Chargement...</div>
                     </div>
                 </div>
 
