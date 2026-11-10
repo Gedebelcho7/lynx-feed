@@ -10,7 +10,7 @@ const API_KEY = "AIzaSyAESkXTPEvXGWK5LTd55_XTHWwexTHvtG4";
 const BASE_PATH = "artifacts/default-app-id/public/data";
 const SITE_URL = "https://gedebelcho7.github.io/lynx-feed/app/"; // l'app, servie par GitHub Pages (dossier app/ du dépôt lynx-feed)
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // racine Pages du dépôt lynx-feed — l'URL où vivent feed.xml et actus.html
-const KIT_VERSION = "2.21"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
+const KIT_VERSION = "2.22"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const TZ = "Europe/Paris";
@@ -1076,6 +1076,8 @@ async function goalAlerts(settings, subs, matches) {
       let ok = 0;
       for (const s of subs) {
         // v2.18 : filtres de notifications fins — chaque appareil choisit buts adverses / fins de tiers / score final
+        // v2.22 : mode « résumé hebdo seulement » — aucun push direct pour ces appareils
+        if (s.prefs && s.prefs.onlyDigest) continue;
         if (p.kind === "goal-opp" && s.prefs && s.prefs.goalsOpp === false) continue;
         if (p.kind === "tier" && s.prefs && s.prefs.tiers === false) continue;
         if (p.kind === "result" && s.prefs && s.prefs.result === false) continue;
@@ -1097,7 +1099,7 @@ async function goalAlerts(settings, subs, matches) {
 // lastDate avance au plus récent de TOUS les articles vus (le plus récent ne peut plus être sauté par le slice).
 // État dans settings/articles-state (date du dernier article poussé).
 async function articlePush(news, subs) {
-  const targets = subs.filter(s => !s.prefs || s.prefs.articles !== false);
+  const targets = subs.filter(s => (!s.prefs || s.prefs.articles !== false) && !(s.prefs && s.prefs.onlyDigest));
   if (!targets.length || !VAPID_PRIVATE_KEY) return;
   const state = await getDoc("settings", "articles-state");
   const lastDate = Number(state && state.lastDate) || 0;
@@ -1136,7 +1138,7 @@ async function articlePush(news, subs) {
 // Max 2 par cycle ; respecte la préférence « Actus presse » (prefs.actus) de chaque appareil.
 // Les items du flux EliteProspects Transactions déclenchent une notif dédiée « Mouvement de joueur ».
 async function actusPush(newItems, subs) {
-  const targets = subs.filter(s => !s.prefs || s.prefs.actus !== false);
+  const targets = subs.filter(s => (!s.prefs || s.prefs.actus !== false) && !(s.prefs && s.prefs.onlyDigest));
   if (!targets.length || !VAPID_PRIVATE_KEY || !Array.isArray(newItems) || !newItems.length) return;
   const webpush = (await import("web-push")).default;
   webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -1196,6 +1198,7 @@ async function ticketCheck(subs) {
         webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
         let ok = 0;
         for (const s of subs) {
+          if (s.prefs && s.prefs.onlyDigest) continue; // v2.22 : mode « résumé hebdo seulement »
           if (s.prefs && s.prefs.ticket === false) continue; // v2.18 : filtre fin — billetterie désactivable par appareil
           try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🎟️ Billetterie Lynx : places en vente !", body: it.label, url: it.url, tag: "ticket_" + id })); ok++; }
           catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
@@ -1302,7 +1305,7 @@ async function main() {
     }
   }
   console.log(`Rappels à envoyer : ${toSend.length} — Abonnés push : ${subs.length}`);
-  const reminderSubs = subs.filter(s => !s.prefs || s.prefs.reminders !== false);
+  const reminderSubs = subs.filter(s => (!s.prefs || s.prefs.reminders !== false) && !(s.prefs && s.prefs.onlyDigest));
   if (toSend.length && reminderSubs.length && VAPID_PRIVATE_KEY) {
     const webpush = (await import("web-push")).default;
     webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
