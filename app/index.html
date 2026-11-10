@@ -821,6 +821,10 @@
                     <div id="chart-special-teams"></div>
                 </div>
                 <div class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-6 rounded-xl shadow-xl">
+                    <h3 class="font-bold text-lg mb-3"><i class="fa-solid fa-clock text-lynx-red mr-2"></i>Quand les Lynx marquent (matchs suivis en direct)</h3>
+                    <div id="chart-goals-timing"></div>
+                </div>
+                <div class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-6 rounded-xl shadow-xl">
                     <h3 class="font-bold text-lg mb-3"><i class="fa-solid fa-tachograph-digital text-lynx-red mr-2"></i>Ratio pts / match d'équipe</h3>
                     <div id="chart-pts-ratio"></div>
                 </div>
@@ -1535,11 +1539,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "";
+        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_YrujuVF7QQ2YfLzXfURY05Rsrkw5uP9K_0154kT";
+        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -1792,7 +1796,7 @@
         async function shareNewsItem(n) {
             try {
                 const pagesBase = String(rssPublicUrl || '').replace(/\/?feed\.xml\s*$/, '').replace(/\/?$/, '/');
-                const base = (location.origin && location.origin.startsWith('http') ? location.origin + location.pathname : 'https://lynxvalence.fr/');
+                const base = (location.origin && location.origin.startsWith('http') ? location.origin + location.pathname : 'https://gedebelcho7.github.io/lynx-feed/app/');
                 const url = pagesBase ? pagesBase + 'actus.html#lynx-' + String(n.id || hashId(n.title)) : base;
                 // v2.18 : texte prêt à publier — titre + extrait propre (Markdown retiré), l'utilisateur choisit
                 // le réseau dans la feuille de partage native et valide lui-même : aucun envoi automatique.
@@ -2177,7 +2181,7 @@
                     </div>
                     ${raceTxt ? `<div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 text-center text-[11px] md:text-xs font-bold text-gray-600 dark:text-gray-300">${raceTxt}</div>` : ''}
                     ${prevTxt ? `<div class="text-center text-[11px] md:text-xs font-bold text-gray-600 dark:text-gray-300">${prevTxt}</div>` : ''}
-                    ${lynxTrajectorySvg(activeSeason)}`;
+                    ${lynxTrajectorySvg(activeSeason)}<div id="home-playoffs-odds"></div><div id="home-reliability-svg"></div>`;
             } catch (e) { console.warn('renderSeriesRecords', e); }
         }
 
@@ -2727,18 +2731,48 @@
                     if (!rd || Math.abs(rd - md) > 36 * 36e5) return false;
                     return mKey(r.homeTeam, r.awayTeam) === mKey(m.homeTeam, m.awayTeam) || mKey(r.awayTeam, r.homeTeam) === mKey(m.homeTeam, m.awayTeam);
                 });
-                if (!rep) return;
+                if (!rep) {
+                    // pas de suivi en direct pour ce match : on affiche quand même le bilan de la saison (données réelles)
+                    const fin = allMatches.filter(x => x.season === activeSeason && (!x.type || x.type === 'Saison') && isMatchFinished(x) && x.scoreHome != null && x.scoreAway != null);
+                    let v = 0, nn = 0, dd = 0;
+                    fin.forEach(x => { const lv = normalize(x.homeTeam).includes('valence'); const my = lv ? x.scoreHome : x.scoreAway, oo = lv ? x.scoreAway : x.scoreHome; if (my > oo) v++; else if (my < oo) dd++; else nn++; });
+                    el.insertAdjacentHTML('beforeend', `<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 w-full text-center"><span class="text-[11px] font-bold text-gray-600 dark:text-gray-300">Bilan de la saison : <span class="text-green-600">${v} V</span> · ${nn} N · <span class="text-red-500">${dd} D</span></span><div class="text-[10px] text-gray-400 italic mt-1">Tiers, buteurs et joueur du match s'affichent ici après un match suivi en direct.</div></div>`);
+                    return;
+                }
                 const lynxHome = normalize(m.homeTeam).includes('valence');
                 const my = lynxHome ? m.scoreHome : m.scoreAway, opp = lynxHome ? m.scoreAway : m.scoreHome;
                 const verdict = my > opp ? { txt: 'VICTOIRE', cls: 'bg-green-500' } : (my < opp ? { txt: 'DÉFAITE', cls: 'bg-red-500' } : { txt: 'NUL', cls: 'bg-gray-500' });
                 const perT = rep.perT || [];
                 const tiers = perT.length ? `<div class="flex justify-center gap-2 mt-3 flex-wrap">` + [[0, 'T1'], [1, 'T2'], [2, 'T3']].map(p => `<span class="text-[10px] font-bold bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-1">${p[1]} <span class="text-lynx-red">${(perT[p[0]] || [0, 0])[0]}-${(perT[p[0]] || [0, 0])[1]}</span></span>`).join('') + (rep.isProl ? `<span class="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full px-2 py-1">prolong.</span>` : '') + `</div>` : '';
                 const lynxSide = lynxHome ? 'H' : 'A';
+                // v2.21 : timeline du match — frise des buts et pénalités depuis le rapport live
+                let tl = '';
+                try {
+                    const evs = [...(rep.events || [])].filter(e => e && e.ty && e.time);
+                    if (evs.length) {
+                        const minOf = (e) => { const mm = String(e.time).match(/(\d+)/); return mm ? Number(mm[1]) : 0; };
+                        const maxMin = Math.max(60, ...evs.map(minOf)) + 1;
+                        const px = (min) => (Math.max(0, Math.min(1, min / maxMin)) * 100).toFixed(2);
+                        let inner = '';
+                        [[20, 'Fin T1'], [40, 'Fin T2'], [60, 'Fin T3']].forEach(t => { if (t[0] < maxMin) inner += `<div class="absolute top-0 bottom-0 w-px bg-gray-300 dark:bg-gray-600" style="left:${px(t[0])}%" title="${t[1]}"></div>`; });
+                        evs.forEach(e => {
+                            const min = minOf(e);
+                            const who = String(e.who || '').split('(')[0].trim();
+                            if (e.ty === 'BUT') {
+                                const mine = e.side === lynxSide;
+                                inner += `<div class="absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}" style="left:${px(min)}%" title="${mine ? 'But Lynx' : 'But adverse'} — ${xmlEsc(who)} (${xmlEsc(String(e.time))})"><div class="w-3 h-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${mine ? 'bg-lynx-red' : 'bg-sky-700'}"></div></div>`;
+                            } else if (/PEN|PUN/i.test(String(e.ty))) {
+                                inner += `<div class="absolute -translate-x-1/2 top-1/2 -mt-1" style="left:${px(min)}%" title="Pénalité ${xmlEsc(who)} (${xmlEsc(String(e.time))})"><div class="w-2 h-2 rotate-45 bg-amber-500"></div></div>`;
+                            }
+                        });
+                        tl = `<div class="mt-3 relative h-12 w-full max-w-md mx-auto"><div class="absolute top-1/2 left-0 right-0 h-0.5 bg-gray-200 dark:bg-gray-700 -translate-y-1/2"></div>${inner}</div><div class="flex justify-between items-center text-[9px] text-gray-400 font-bold max-w-md mx-auto gap-2"><span>0'</span><span>🚨 Lynx (haut) · adversaire (bas) · ◆ pénalités</span><span>${maxMin - 1}'</span></div>`;
+                    }
+                } catch (e) {}
                 const scorers = [...(rep.events || [])].filter(e => e && e.ty === 'BUT' && e.side === lynxSide && e.who).map(e => String(e.who).split('(')[0].trim() + (e.time ? ' (' + e.time + ')' : '') + (e.sit === 'SUP' ? ' SN' : e.sit === 'INF' ? ' IN' : '')).filter(Boolean);
                 const scorersHtml = scorers.length ? `<div class="mt-2 text-[11px] text-gray-600 dark:text-gray-300 font-bold">🚨 Buts Lynx : ${scorers.map(xmlEsc).join(' · ')}</div>` : '';
                 const mvp = (Array.isArray(rep.mvps) ? rep.mvps : []).filter(Boolean);
                 const mvpHtml = mvp.length ? `<div class="mt-1 text-[11px] font-bold text-purple-500 dark:text-purple-300">⭐ Joueur du match : ${mvp.map(xmlEsc).join(' et ')}</div>` : '';
-                el.insertAdjacentHTML('beforeend', `<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 w-full text-center"><span class="inline-block text-[10px] font-black text-white px-3 py-1 rounded-full ${verdict.cls}">${verdict.txt}</span>${tiers}${scorersHtml}${mvpHtml}</div>`);
+                el.insertAdjacentHTML('beforeend', `<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 w-full text-center"><span class="inline-block text-[10px] font-black text-white px-3 py-1 rounded-full ${verdict.cls}">${verdict.txt}</span>${tl}${tiers}${scorersHtml}${mvpHtml}</div>`);
             } catch (e) { console.warn('enrichLatestResult', e); }
         }
 
@@ -3111,7 +3145,8 @@
                  sorted = sortRankFFHG(list, activeSeason);
             }
             
-            if(limit < 99) sorted = sorted.slice(0,limit); // Only slice for home widget
+            let rankOffset = 0; const winN = limit < 0 ? -limit : 0;
+            if (winN === 0 && limit < 99) sorted = sorted.slice(0, limit); // Only slice for home widget
 
             // v2.14 : flèches de mouvement ▲▼ au classement — comparaison avec le classement précédent
             // (instantané mémorisé sur l'appareil ; les flèches persistent jusqu'au prochain changement de position,
@@ -3134,6 +3169,12 @@
                     store[key] = ent;
                     localStorage.setItem('lynx_rank_moves', JSON.stringify(store));
                 } catch (e) {}
+            }
+
+            // v2.20 : fenêtre autour des Lynx (accueil) — N équipes, positions réelles affichées
+            if (winN > 0) {
+                const iL = sorted.findIndex(t => normalize(t.team).includes('valence'));
+                if (iL >= 0) { const start = Math.max(0, Math.min(iL - Math.floor(winN / 2), Math.max(0, sorted.length - winN))); rankOffset = start; sorted = sorted.slice(start, start + winN); }
             }
 
             // Highlighting
@@ -3160,7 +3201,7 @@
                 const pouleBadge = showPoule ? `<td class="p-3"><span class="text-[10px] font-black px-2 py-1 rounded text-white ${t.poule === 'A' ? 'bg-lynx-dark' : 'bg-lynx-red'}">${t.poule || '?'}</span></td>` : '';
                 const formHtml = (full && t.form) ? `<td class="p-3 text-center text-[11px] font-black tracking-wider">${(t.form||'').split('').map(c => c === 'V' ? '<span class="text-green-500">V</span>' : c === 'v' ? '<span class="text-emerald-500">v</span>' : c === 'd' ? '<span class="text-orange-400">d</span>' : c === 'D' ? '<span class="text-red-500">D</span>' : '<span class="text-gray-400">N</span>').join(' ')}</td>` : '';
                 const row = `
-                    <td class="p-3 font-bold whitespace-nowrap">${i+1}${arrowHtml}</td>
+                    <td class="p-3 font-bold whitespace-nowrap">${i + 1 + rankOffset}${arrowHtml}</td>
                     ${pouleBadge}
                     <td class="p-3 flex items-center gap-2"><img src="${getLogo(t.team)}" class="w-5 h-5 object-contain"> <span class="truncate max-w-[120px] md:max-w-none">${t.team}</span></td>
                     <td class="p-3 text-center ${bgPts}">${t.pts}</td>
@@ -4155,8 +4196,9 @@
                 }
             } catch (e) {}
             renderMatchCard(next.length ? next[0] : null, 'upcoming-match-content', false, mainRanking);
+            try { renderGoalsMarket(next.length ? next[0] : null); } catch (e) {} // v2.21 : buts attendus / +5,5 / les deux marquent
             // v2.18 : pronostic buteur — calcule le buteur pressenti puis re-rend la carte du prochain match
-            refreshScorerPick(activeSeason).then((pick) => { if (pick) renderMatchCard(next.length ? next[0] : null, 'upcoming-match-content', false, mainRanking); }).catch(() => {});
+            refreshScorerPick(activeSeason).then((pick) => { if (pick) { renderMatchCard(next.length ? next[0] : null, 'upcoming-match-content', false, mainRanking); try { renderGoalsMarket(next.length ? next[0] : null); } catch (e) {} } }).catch(() => {});
             
             // --- NEW: Update Ask Bot Button ---
             const btnAsk = document.getElementById('btn-ask-bot-h2h');
@@ -4178,11 +4220,12 @@
             }
             // ----------------------------------
 
-            renderRanking(mainRanking, 'ranking-table-body-home', 5);
+            renderRanking(mainRanking, 'ranking-table-body-home', -5); // v2.20 : fenêtre de 5 équipes autour des Lynx (positions réelles)
             renderHomeExtremes(mainRanking); 
             renderForm(done);
             renderHomeRivals(mainRanking);
             renderSeriesRecords(sMatches, mainRanking);
+            setTimeout(() => { try { updateHomeForecast(); } catch (e) {} }, 400); // v2.21 : proba playoffs + courbe de fiabilité (après peinture, moteur en cache)
             renderMatchDay(next, sMatches, mainRanking);
             renderLynxCal(lynxMatches);
             renderFullCal(sMatches); 
@@ -4430,7 +4473,7 @@
             // score de fin de temps réglementaire et on désigne un vainqueur en prolongation.
             const expDraw = best.s[0] === best.s[1];
             const expWinner = pHomeWin >= pAwayWin ? 'H' : 'A';
-            return { pHomeWin, pAwayWin, pT, expScore: best.s, expDraw, expWinner, ePts: [eH, eA], conf, absN: adjH.n + adjA.n };
+            return { pHomeWin, pAwayWin, pT, expScore: best.s, expDraw, expWinner, ePts: [eH, eA], conf, absN: adjH.n + adjA.n, lamH: lamHF, lamA: lamAF };
         }
 
         function backtestModel(season, poules) {
@@ -4520,6 +4563,145 @@
             try { if (doneCount >= 4) data = computeForecast(season); } catch (e) { console.error('Forecast error', e); data = null; }
             forecastCache = { key, data };
             return data;
+        }
+
+        // ==================== v2.21 : stats avancées & visuels (Monte-Carlo accueil, buts attendus, fiabilité, heatmap, radar) ====================
+        let liveProbModel = null; // modèle de saison en cache pour la jauge de probabilité en direct
+        function poissonSample(l) { if (!(l > 0)) return 0; const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
+
+        // ⚽ Marché des buts sur la carte du prochain match (Poisson du site — 0 IA)
+        function renderGoalsMarket(m) {
+            try {
+                const el = document.getElementById('upcoming-match-content');
+                if (!el || !m) return;
+                const played = allMatches.filter(x => x.season === activeSeason && (!x.type || x.type === 'Saison') && isMatchFinished(x));
+                if (played.length < 3) return;
+                const p = predictMatch(buildPoolModel(played), m.homeTeam, m.awayTeam, new Date(m.date).getTime());
+                const lamT = (p.lamH || 0) + (p.lamA || 0);
+                if (!(lamT > 0.2)) return;
+                let cum = 0; for (let k = 0; k <= 5; k++) cum += poissonPmf(lamT, k);
+                const over = Math.round((1 - cum) * 100);
+                const btts = Math.round((1 - Math.exp(-(p.lamH || 0))) * (1 - Math.exp(-(p.lamA || 0))) * 100);
+                el.insertAdjacentHTML('beforeend', `<div class="mt-2 text-[11px] font-bold text-gray-500 dark:text-gray-300 text-center" title="Modèle Poisson du site (attaque/défense, forme, domicile/extérieur)">⚽ Buts attendus : ${lamT.toFixed(1).replace('.', ',')} · +5,5 buts : <span class="text-lynx-red">${over} %</span> · Les deux marquent : <span class="text-lynx-red">${btts} %</span></div>`);
+            } catch (e) {}
+        }
+
+        // 🏆 + 🎯 Monte-Carlo playoffs & courbe de fiabilité sur l'accueil (réutilise le moteur de prévisions, en cache)
+        function updateHomeForecast() {
+            try {
+                const poEl = document.getElementById('home-playoffs-odds');
+                const rlEl = document.getElementById('home-reliability-svg');
+                if (!poEl && !rlEl) return;
+                const fc = getForecast(activeSeason);
+                if (poEl) {
+                    let html = '';
+                    if (fc && fc.groups) {
+                        const poules = seasonHasPoules(activeSeason);
+                        const grp = fc.groups[poules ? 'B' : ''] || Object.values(fc.groups)[0];
+                        const row = grp && grp.table ? grp.table.find(t => normalize(t.team).includes('valence')) : null;
+                        if (row && row.pPO != null) {
+                            const pct = Math.round((row.pPO || 0) * 100);
+                            const pos = grp.table.indexOf(row) + 1;
+                            html = `<div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700"><div class="text-[9px] uppercase font-bold text-gray-400 tracking-wider text-center mb-1">🏆 Probabilité de playoffs — saison jouée 400 fois par le modèle</div><div class="flex items-center justify-center gap-4"><div class="text-3xl font-black tabular-nums ${pct >= 50 ? 'text-green-600' : 'text-amber-500'}">${pct} %</div><div class="text-[11px] text-gray-500 dark:text-gray-300">position projetée : <b>${pos}e</b><br>total projeté : <b>~${Math.round(row.projPts)} pts</b> (${row.remM} match(s) restant(s))</div></div><div class="mt-2 h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 max-w-sm mx-auto"><div class="h-full bg-green-500 transition-all duration-700" style="width:${pct}%"></div></div></div>`;
+                        }
+                    }
+                    poEl.innerHTML = html;
+                }
+                if (rlEl) {
+                    let html = '';
+                    const hist = fc && fc.histPreds ? fc.histPreds : null;
+                    if (hist) {
+                        const done = allMatches.filter(m => m.season === activeSeason && isMatchFinished(m) && (!m.type || m.type === 'Saison')).sort((a, b) => new Date(a.date) - new Date(b.date));
+                        const pts = []; let ok = 0, tot = 0;
+                        done.forEach(m => {
+                            const h = hist[m.id];
+                            if (!h) return;
+                            const actual = m.scoreHome > m.scoreAway ? 'H' : (m.scoreAway > m.scoreHome ? 'A' : null);
+                            if (!actual) return;
+                            tot++;
+                            if ((h.pH >= h.pA ? 'H' : 'A') === actual) ok++;
+                            if (tot >= 4) pts.push({ n: tot, pct: Math.round(100 * ok / tot) });
+                        });
+                        if (pts.length >= 3) {
+                            const W = 560, H = 120, padL = 32, padR = 44, padT = 12, padB = 16;
+                            const fx = (n) => padL + (n - 1) / Math.max(1, pts.length - 1) * (W - padL - padR);
+                            const fy = (p) => padT + (100 - p) / 100 * (H - padT - padB);
+                            let g = `<line x1="${padL}" y1="${fy(50).toFixed(1)}" x2="${W - padR}" y2="${fy(50).toFixed(1)}" stroke="rgba(128,128,128,0.35)" stroke-dasharray="3 3"/><text x="${padL - 5}" y="${(fy(50) + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="#9CA3AF">50 %</text><line x1="${padL}" y1="${fy(100).toFixed(1)}" x2="${W - padR}" y2="${fy(100).toFixed(1)}" stroke="rgba(128,128,128,0.15)" stroke-dasharray="3 3"/><text x="${padL - 5}" y="${(fy(100) + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="#9CA3AF">100 %</text>`;
+                            g += `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + fx(p.n).toFixed(1) + ' ' + fy(p.pct).toFixed(1)).join(' ')}" fill="none" stroke="#D90429" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+                            pts.forEach(p => { g += `<circle cx="${fx(p.n).toFixed(1)}" cy="${fy(p.pct).toFixed(1)}" r="3" fill="#D90429"><title>Après ${p.n} matchs rejoués : ${p.pct} % de vainqueurs corrects</title></circle>`; });
+                            const last = pts[pts.length - 1];
+                            g += `<text x="${(fx(last.n) + 5).toFixed(1)}" y="${(fy(last.pct) + 3).toFixed(1)}" font-size="10" font-weight="900" fill="#D90429">${last.pct} %</text>`;
+                            html = `<div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700"><div class="text-[9px] uppercase font-bold text-gray-400 tracking-wider text-center mb-1">🎯 Fiabilité du modèle, match après match (backtest sans triche)</div><svg viewBox="0 0 ${W} ${H}" class="w-full h-auto">${g}</svg></div>`;
+                        }
+                    }
+                    rlEl.innerHTML = html;
+                }
+            } catch (e) { console.warn('updateHomeForecast', e); }
+        }
+
+        // 🕸️ Radar comparé du Face-à-Face (5 axes, saison en cours)
+        function teamSeasonMetrics(team) {
+            const nk = normalize(team);
+            const ms = allMatches.filter(m => m.season === activeSeason && (!m.type || m.type === 'Saison') && isMatchFinished(m) && (normalize(m.homeTeam) === nk || normalize(m.awayTeam) === nk));
+            let bp = 0, bc = 0, pts = 0;
+            ms.forEach(m => { const h = normalize(m.homeTeam) === nk; bp += h ? m.scoreHome : m.scoreAway; bc += h ? m.scoreAway : m.scoreHome; pts += matchPoints(h ? m.scoreHome : m.scoreAway, h ? m.scoreAway : m.scoreHome, m.isProl); });
+            const n = ms.length || 1;
+            const last5 = ms.slice(-5);
+            let f5 = 0; last5.forEach(m => { const h = normalize(m.homeTeam) === nk; f5 += matchPoints(h ? m.scoreHome : m.scoreAway, h ? m.scoreAway : m.scoreHome, m.isProl); });
+            return { n: ms.length, att: bp / n, def: bc / n, pts: pts / n, f5: last5.length ? f5 / (last5.length * 3) : 0.5, diff: (bp - bc) / n };
+        }
+        function renderH2HRadar(tA, tB) {
+            const host = document.getElementById('h2h-radar');
+            if (!host) return;
+            try {
+                if (!tA || !tB) { host.innerHTML = ''; return; }
+                const A = teamSeasonMetrics(tA), B = teamSeasonMetrics(tB);
+                if (!A.n || !B.n) { host.innerHTML = ''; return; }
+                const axes = [['Attaque', A.att, B.att], ['Défense', -A.def, -B.def], ['Forme (5)', A.f5, B.f5], ['Rendement', A.pts, B.pts], ['Diff. buts', A.diff, B.diff]];
+                const R = 82, cx = 110, cy = 108;
+                const pt = (i, v) => { const ang = -Math.PI / 2 + i * 2 * Math.PI / axes.length; return [cx + Math.cos(ang) * R * v, cy + Math.sin(ang) * R * v]; };
+                let g = '';
+                [0.25, 0.5, 0.75, 1].forEach(r => { g += `<polygon points="${axes.map((_, i) => pt(i, r).map(x => x.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="rgba(128,128,128,0.25)"/>`; });
+                axes.forEach((ax, i) => { const p = pt(i, 1.22); g += `<text x="${p[0].toFixed(1)}" y="${p[1].toFixed(1)}" font-size="9" font-weight="bold" text-anchor="middle" fill="#9CA3AF">${ax[0]}</text>`; });
+                const sc = (raw, i) => { if (i === 2) return Math.max(0.08, Math.min(0.98, raw)); const pair = [axes[i][1], axes[i][2]]; const lo = Math.min(pair[0], pair[1], 0), hi = Math.max(pair[0], pair[1], 0.001); return 0.15 + 0.75 * (raw - lo) / ((hi - lo) || 1); };
+                const poly = (vals, col) => `<polygon points="${vals.map((v, i) => pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ')}" fill="${col}" fill-opacity="0.22" stroke="${col}" stroke-width="2"/>`;
+                g += poly(axes.map((ax, i) => sc(ax[1], i)), '#D90429') + poly(axes.map((ax, i) => sc(ax[2], i)), '#0369A1');
+                host.innerHTML = `<div class="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700"><div class="text-[9px] uppercase font-bold text-gray-400 tracking-wider text-center mb-1">🕸️ Radar comparé (saison en cours)</div><div class="flex justify-center gap-4 text-[10px] font-bold mb-1"><span class="text-lynx-red">■ ${xmlEsc(tA)}</span><span class="text-sky-700 dark:text-sky-400">■ ${xmlEsc(tB)}</span></div><svg viewBox="0 0 220 220" class="w-full max-w-[340px] mx-auto h-auto">${g}</svg></div>`;
+            } catch (e) { host.innerHTML = ''; }
+        }
+
+        // ⏱️ Heatmap : quand les Lynx marquent (et encaissent), par tranche de 10 min — depuis les rapports live
+        async function renderGoalsTiming() {
+            const el = document.getElementById('chart-goals-timing');
+            if (!el) return;
+            try {
+                const reps = (await dbFetchCol('live-reports')).map(d => d.data).filter(r => r && Array.isArray(r.events) && r.date && (!r.season || String(r.season) === String(activeSeason)));
+                const buckets = Array.from({ length: 7 }, () => ({ f: 0, c: 0 }));
+                const bIdx = (min) => Math.max(0, Math.min(6, Math.floor(min / 10)));
+                reps.forEach(r => {
+                    const lynxHome = normalize(r.homeTeam || '').includes('valence');
+                    (r.events || []).forEach(e => {
+                        if (!e || e.ty !== 'BUT' || !e.time) return;
+                        const mm = String(e.time).match(/(\d+)/);
+                        if (!mm) return;
+                        buckets[bIdx(Number(mm[1]))][(e.side === 'H') === lynxHome ? 'f' : 'c']++;
+                    });
+                });
+                const totF = buckets.reduce((s, b) => s + b.f, 0), totC = buckets.reduce((s, b) => s + b.c, 0);
+                if (!totF && !totC) { el.innerHTML = '<div class="text-xs text-gray-400 italic text-center py-4">Aucun but enregistré dans les matchs suivis en direct — la heatmap se remplira au fil des matchs.</div>'; return; }
+                const maxV = Math.max(1, ...buckets.map(b => Math.max(b.f, b.c)));
+                const W = 560, H = 170, padL = 26, padB = 28, bw = (W - padL - 12) / 7;
+                let g = '';
+                buckets.forEach((b, i) => {
+                    const hf = (H - padB - 6) * b.f / maxV, hc = (H - padB - 6) * b.c / maxV;
+                    const x = padL + i * bw;
+                    g += `<rect x="${(x + 2).toFixed(1)}" y="${(H - padB - hf).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${Math.max(0, hf).toFixed(1)}" fill="#D90429" rx="2"><title>Buts Lynx ${i === 6 ? '60 min et +' : i * 10 + '-' + (i * 10 + 10) + ' min'} : ${b.f}</title></rect>`;
+                    g += `<rect x="${(x + bw / 2 + 1).toFixed(1)}" y="${(H - padB - hc).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${Math.max(0, hc).toFixed(1)}" fill="#64748B" rx="2"><title>Buts encaissés : ${b.c}</title></rect>`;
+                    g += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - padB + 12}" font-size="9" text-anchor="middle" fill="#9CA3AF">${i === 6 ? '60+' : i * 10}</text>`;
+                });
+                g += `<line x1="${padL}" y1="${H - padB}" x2="${W - 12}" y2="${H - padB}" stroke="rgba(128,128,128,0.4)"/>`;
+                el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full h-auto">${g}</svg><div class="flex justify-center gap-4 text-[10px] font-bold text-gray-500 mt-1"><span><span class="inline-block w-2.5 h-2.5 rounded-sm" style="background:#D90429"></span> Buts Lynx (${totF})</span><span><span class="inline-block w-2.5 h-2.5 rounded-sm" style="background:#64748B"></span> Buts encaissés (${totC})</span></div>`;
+            } catch (e) { console.warn('renderGoalsTiming', e); }
         }
 
         // Pronostic à afficher sur une ligne de calendrier : à venir = modèle actuel ; joué = pronostic rejoué avant-match
@@ -5214,7 +5396,7 @@
         function buildRssXml() {
             const items = [...newsList].sort((a, b) => new Date(b.date) - new Date(a.date));
             if (!items.length) return null;
-            const base = (location.origin && location.origin.startsWith('http') ? location.origin + location.pathname : 'https://lynxvalence.fr/');
+            const base = (location.origin && location.origin.startsWith('http') ? location.origin + location.pathname : 'https://gedebelcho7.github.io/lynx-feed/app/');
             // URL publique de la page actus (GitHub Pages) : la cible des <link> de chaque item du flux
             const pagesBase = String(rssPublicUrl || '').replace(/\/?feed\.xml\s*$/, '').replace(/\/?$/, '/');
             // lastBuildDate = date du dernier article (pas "maintenant") → le fichier ne change
@@ -5755,6 +5937,7 @@ ${cards}
             renderChartBars('chart-lynx-goals', roster.filter(p => p.season === activeSeason).sort((a, b) => (b.goals || 0) - (a.goals || 0)).slice(0, 8).map(p => ({ label: p.name, value: p.goals || 0, hl: false })));
             renderChartBars('chart-league-pts', leaguePlayers.filter(p => p.season === activeSeason).sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0)).slice(0, 8).map(p => ({ label: `${p.name} (${(p.team || '?').slice(0, 14)})`, value: Number(p.pts) || 0, hl: normalize(p.team).includes('valence') })));
             renderSpecialTeams();
+            try { renderGoalsTiming(); } catch (e) {} // v2.21 : heatmap des buts par tranche de 10 min
             renderLynxLeaderboard();
             // v2.16 : ratio points / match d'équipe joué (densité du calendrier — compare les pointeurs à égalité de matchs)
             const lynxPlayed = allMatches.filter(m => m.season === activeSeason && /valence/i.test(`${m.homeTeam || ''}${m.awayTeam || ''}`) && isMatchFinished(m)).length;
@@ -5870,7 +6053,8 @@ ${cards}
             }
             const aliasEl = document.getElementById('admin-rss-aliases');
             if (aliasEl) {
-                const teams = [...new Set(allMatches.filter(m => m.season === activeSeason).flatMap(m => [m.homeTeam, m.awayTeam]))].filter(Boolean).sort((a, b) => a.localeCompare(b));
+                const teamsRaw = [...new Set(allMatches.filter(m => m.season === activeSeason).flatMap(m => [m.homeTeam, m.awayTeam]))].filter(Boolean);
+                const teams = teamsRaw.filter((t, i) => teamsRaw.findIndex(x => normalize(x) === normalize(t)) === i).sort((a, b) => a.localeCompare(b)); // v2.20 : dédoublonné insensible à la casse
                 const sel = document.getElementById('rss-alias-team');
                 if (sel) { const keep = sel.value; sel.innerHTML = '<option value="">— choisir une équipe —</option>' + teams.map(t => `<option value="${xmlEsc(normalize(t))}">${xmlEsc(t)}</option>`).join(''); if (keep) sel.value = keep; }
                 const entries = Object.entries(rssTeamAliases || {}).filter(([k, al]) => al && al.length);
@@ -7466,8 +7650,20 @@ ${cards}
                 if (st.tab) return 0.5;
                 const d = st.homeScore - st.awayScore;
                 const frac = Math.max(0, Math.min(1, (st.ms || 0) / 3600000)); // fraction du temps réglementaire écoulée
-                let logit = 0.1 + d * (0.55 + 1.15 * frac); // avantage domicile léger, chaque but pèse plus en fin de match
-                if (st.isOvertime) logit = 0.1 + d * 0.45; // mort subie : plus anyone's game
+                let base = 0.1; // avantage domicile léger
+                try { // v2.21 : la base devient la probabilité pré-match du modèle du site (force des équipes, forme, dom/ext)
+                    if (!liveProbModel || liveProbModel.season !== activeSeason) {
+                        const playedAll = allMatches.filter(x => x.season === activeSeason && (!x.type || x.type === 'Saison') && isMatchFinished(x));
+                        if (playedAll.length >= 3) liveProbModel = { season: activeSeason, model: buildPoolModel(playedAll) };
+                    }
+                    if (liveProbModel) {
+                        const p0 = predictMatch(liveProbModel.model, st.homeName, st.awayName, Date.now());
+                        const ph = Math.max(0.02, Math.min(0.98, p0.pHomeWin));
+                        base = Math.log(ph / (1 - ph));
+                    }
+                } catch (e) {}
+                let logit = base + d * (0.55 + 1.15 * frac); // chaque but pèse plus en fin de match
+                if (st.isOvertime) logit = base * 0.3 + d * 0.45; // mort subie : plus anyone's game
                 return 1 / (1 + Math.exp(-logit));
             }
             function liveProbRender(st) {
@@ -8493,7 +8689,7 @@ ${cards}
             document.addEventListener('click', (e) => {
                 if(e.target.classList.contains('open-h2h')) {
                     h2hHome = e.target.dataset.home; h2hAway = e.target.dataset.away;
-                    const updateH2HContent = (filterType = 'season') => { document.getElementById('h2h-modal-content').innerHTML = `<div class="p-4 text-center text-gray-500 italic text-xs mb-2">Pour une analyse complète (Stats, Graphiques), utilisez l'onglet "Comparateur".</div>` + getComparisonHTML(h2hHome, h2hAway, filterType) + '<div id="h2h-keys"></div>'; try { renderH2HKeys(h2hHome, h2hAway); } catch (e) {} };
+                    const updateH2HContent = (filterType = 'season') => { document.getElementById('h2h-modal-content').innerHTML = `<div class="p-4 text-center text-gray-500 italic text-xs mb-2">Pour une analyse complète (Stats, Graphiques), utilisez l'onglet "Comparateur".</div>` + getComparisonHTML(h2hHome, h2hAway, filterType) + '<div id="h2h-radar"></div><div id="h2h-keys"></div>'; try { renderH2HRadar(h2hHome, h2hAway); } catch (e) {} try { renderH2HKeys(h2hHome, h2hAway); } catch (e) {} };
                     updateH2HContent('season'); toggleModal('h2h-modal', true);
                     document.getElementById('h2h-filter-season').onclick = () => updateH2HContent('season'); document.getElementById('h2h-filter-all').onclick = () => updateH2HContent('all');
                 }
