@@ -1222,7 +1222,8 @@
                         <button id="btn-purge-ranking" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Classements</button>
                         <button id="btn-purge-roster" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Effectif (Joueurs+Gardiens)</button>
                         <button id="btn-purge-league" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Top Ligue</button>
-                        <button id="btn-dedupe-calendar" class="py-2 px-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded font-bold text-xs" title="Supprime les matchs en double (même jour, mêmes équipes, casse différente)">🧹 Dédoublonner Matchs</button>
+                        <button id="btn-dedupe-calendar" class="py-2 px-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded font-bold text-xs" title="Supprime les matchs en double (même jour, mêmes équipes, casse différente — ou mêmes équipes à quelques jours d'écart avec le même score)">🧹 Dédoublonner Matchs</button>
+                        <button id="btn-ffhg-sync" class="py-2 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-xs" title="Récupère les résultats, horaires et prolongations depuis hockeyfrance.com (saison en cours, sans écraser les scores saisis) et archive les déroulés récents (buteurs, pénalités, MVP)">🔄 Résultats FFHG</button>
                     </div>
                  </div>
             </div>
@@ -1714,8 +1715,9 @@
 
         // --- CUSTOM MODALS FOR IFRAME COMPATIBILITY ---
         const appConfirm = (msg, onConfirm) => {
+            try { if (typeof liveAnimQ !== 'undefined' && liveAnimQ) { liveAnimQ.length = 0; const tk = document.getElementById('live-takeover'); if (tk && tk.style.display !== 'none' && typeof liveTakeoverHide === 'function') liveTakeoverHide(true); } } catch (e) {} // v2.22 : idem alerte
             const overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
+            overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[10050] flex items-center justify-center p-4';
             overlay.innerHTML = `
                 <div class="bg-white dark:bg-dark-card p-6 rounded-2xl max-w-sm w-full shadow-2xl border border-lynx-red text-center animate-fade-in transform scale-100">
                     <i class="fa-solid fa-triangle-exclamation text-4xl text-lynx-red mb-4"></i>
@@ -1784,8 +1786,11 @@
             };
         }
         const appAlert = (msg) => {
+            // v2.22 : purger les animations live et passer AU-DESSUS du takeover plein écran (z 10001) —
+            // pendant le rattrapage d'un vieux match, l'animation recouvrait l'alerte et le bouton OK était inclicable
+            try { if (typeof liveAnimQ !== 'undefined' && liveAnimQ) { liveAnimQ.length = 0; const tk = document.getElementById('live-takeover'); if (tk && tk.style.display !== 'none' && typeof liveTakeoverHide === 'function') liveTakeoverHide(true); } } catch (e) {}
             const overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
+            overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[10050] flex items-center justify-center p-4';
             overlay.innerHTML = `
                 <div class="bg-white dark:bg-dark-card p-6 rounded-2xl max-w-sm w-full shadow-2xl border border-blue-500 text-center animate-fade-in">
                     <i class="fa-solid fa-info-circle text-4xl text-blue-500 mb-4"></i>
@@ -2285,7 +2290,7 @@
                                 else if (s && s.equipe_id === vis.id) ga = Number(s.score);
                             }
                         }
-                        rows.push({ div: d.div, id: String(r.id), date: dt.replace(' ', 'T'), home: rec.libelle_court || rec.libelle || '', away: vis.libelle_court || vis.libelle || '', homeFull: rec.libelle_complet || '', awayFull: vis.libelle_complet || '', gh, ga, live: !!r.en_cours, done: r.etat === 'T' });
+                        rows.push({ div: d.div, id: String(r.id), date: dt.replace(' ', 'T'), home: rec.libelle_court || rec.libelle || '', away: vis.libelle_court || vis.libelle || '', homeFull: rec.libelle_complet || '', awayFull: vis.libelle_complet || '', gh, ga, vp: r.victoire_par || '', live: !!r.en_cours, done: r.etat === 'T' });
                     }
                     const meta = (j && j.data && j.data.meta) || {};
                     const per = Number(meta.per_page) || 50;
@@ -3720,14 +3725,20 @@
             if (!nm) return null;
             return playerPhotos[normPlayerKey(nm)] || null;
         }
-        function renderRoster(list) {
+        // v2.22 : totaux auto — si les matchs archivés donnent PLUS que l'import CSV (import ancien ou incomplet),
+        // c'est le chiffre auto qui s'affiche, marqué 🎬 ; jamais de chiffre inférieur à l'import.
+        async function renderRoster(list) {
+            let auto = null;
+            try { auto = (await livePlayerStats()).byName; } catch (e) {}
+            const autoOf = (p, kind) => { const r = auto && auto.get(normalize(p.name)); return r ? (kind === 'g' ? (r.g || 0) : (r.a || 0)) : 0; };
+            const statOf = (p, kind) => { const imp = Number(kind === 'g' ? p.goals : p.assists) || 0; const au = autoOf(p, kind); return au > imp ? { v: au, auto: true } : { v: imp, auto: false }; };
             if (!list.length) { document.getElementById('roster-table-body-skaters').innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-400 italic">Aucun joueur importé pour cette saison (Admin → Import FFHG → « Effectif »).</td></tr>'; return; }
-            document.getElementById('roster-table-body-skaters').innerHTML = list.map(p => `<tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer player-row" data-id="${p.id}"><td class="p-3 text-lynx-red font-bold">${p.number||'#'}</td><td class="p-3 font-bold">${playerPhotoOf(p.name) ? `<img src="${playerPhotoOf(p.name)}" alt="" class="w-7 h-7 rounded-full object-cover inline-block align-middle mr-1 border border-gray-300 dark:border-gray-600">` : ''}${p.name}${leagueBadgeOf(p.name)}</td><td class="p-3 text-xs uppercase text-gray-500 hidden md:table-cell">${p.position.substring(0,3)}</td><td class="p-3 text-center text-gray-500">${p.goals}</td><td class="p-3 text-center text-gray-500">${p.assists}</td><td class="p-3 font-black text-center">${(p.goals||0)+(p.assists||0)}</td><td class="p-3 text-center text-xs text-red-400 font-bold">${p.penalties||0}</td></tr>`).join(''); 
-            
-            document.querySelectorAll('.player-row').forEach(r => r.onclick = () => { 
-                const p = list.find(x=>x.id===r.dataset.id); 
+            document.getElementById('roster-table-body-skaters').innerHTML = list.map(p => { const G = statOf(p, 'g'), A = statOf(p, 'a'); const cell = (x) => x.auto ? `<span title="Depuis les matchs archivés (auto)">${x.v} 🎬</span>` : x.v; return `<tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer player-row" data-id="${p.id}"><td class="p-3 text-lynx-red font-bold">${p.number||'#'}</td><td class="p-3 font-bold">${playerPhotoOf(p.name) ? `<img src="${playerPhotoOf(p.name)}" alt="" class="w-7 h-7 rounded-full object-cover inline-block align-middle mr-1 border border-gray-300 dark:border-gray-600">` : ''}${p.name}${leagueBadgeOf(p.name)}</td><td class="p-3 text-xs uppercase text-gray-500 hidden md:table-cell">${p.position.substring(0,3)}</td><td class="p-3 text-center text-gray-500">${cell(G)}</td><td class="p-3 text-center text-gray-500">${cell(A)}</td><td class="p-3 font-black text-center">${G.v + A.v}</td><td class="p-3 text-center text-xs text-red-400 font-bold">${p.penalties||0}</td></tr>`; }).join('');
+
+            document.querySelectorAll('.player-row').forEach(r => r.onclick = () => {
+                const p = list.find(x=>x.id===r.dataset.id);
                 openPlayerModal(p, true);
-            }); 
+            });
         }
 
         function renderLeagueLeaders() { 
@@ -3755,7 +3766,9 @@
         const cleanPName = (s) => String(s || '').replace(/^assist\.?\s*/i, '').replace(/^N°\s*\d+\s*/i, '').split('(')[0].trim();
         async function livePlayerStats() {
             if (_pstatsCache.v && Date.now() - _pstatsCache.t < 3 * 60 * 1000) return _pstatsCache.v;
-            const reps = (await dbFetchCol('live-reports')).map(d => d.data).filter(r => r && Array.isArray(r.events)).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+            // v2.22 : filtre par saison (comme les stats gardiens et les spécial teams) — les rapports des
+            // saisons passées ne doivent pas gonfler la forme, les totaux 🎬 ni les Leaders de la saison en cours.
+            const reps = (await dbFetchCol('live-reports')).map(d => d.data).filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason))).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
             const byName = new Map();
             const ensure = (nm, team) => { const k = normalize(nm); if (!k) return null; if (!byName.has(k)) byName.set(k, { name: nm, teams: new Set(), g: 0, a: 0, mvp: 0, perGame: new Map() }); const r = byName.get(k); if (team) r.teams.add(team); return r; };
             const addPt = (nm, team, gi, kind) => { const r = ensure(nm, team); if (!r) return; const cur = r.perGame.get(gi) || { p: 0 }; if (kind === 'g') r.g++; else r.a++; r.perGame.set(gi, { p: cur.p + 1 }); };
@@ -3785,6 +3798,40 @@
             _pstatsCache = { t: Date.now(), v: out };
             return out;
         }
+        // v2.22 : stats GARDIENS automatiques — depuis les rapports archivés (le flux référence le gardien
+        // qui encaisse chaque but, et le rapport stocke les gardiens alignés). Zéro saisie, zéro invention :
+        // un gardien n'apparaît que s'il est réellement référencé ou aligné dans un rapport.
+        async function liveGoalieStats() {
+            const reps = (await dbFetchCol('live-reports')).map(d => d.data)
+                .filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)))
+                .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+            const byName = new Map();
+            const ensure = (nm) => { const k = normalize(nm); if (!k) return null; if (!byName.has(k)) byName.set(k, { name: nm, mje: 0, v: 0, dprl: 0, d: 0, blan: 0, bc: 0, shots: 0 }); return byName.get(k); };
+            reps.forEach(rep => {
+                const gh = Number(rep.scoreHome) || 0, gaT = Number(rep.scoreAway) || 0;
+                // gardien qui encaisse = gardien de l'équipe EN FACE du buteur (side = équipe qui marque)
+                const conceded = { H: [], A: [] };
+                (rep.events || []).forEach(e => { if (e && e.ty === 'BUT' && e.gkA) conceded[e.side === 'A' ? 'H' : 'A'].push(e.gkA); });
+                const noSub = !(rep.events || []).some(e => e && e.ty === 'REMPLACANT');
+                [['H', Array.isArray(rep.gksH) ? rep.gksH : [], Number(rep.shotsA) || 0, gh, gaT, conceded.H],
+                 ['A', Array.isArray(rep.gksA) ? rep.gksA : [], Number(rep.shotsH) || 0, gaT, gh, conceded.A]].forEach(([, dressed, sa, my, opp, cgo]) => {
+                    const seen = new Map();
+                    [...(dressed || []), ...cgo].forEach(nm => { const k = normalize(nm); if (k && !seen.has(k)) seen.set(k, nm); });
+                    seen.forEach(nm => { const g = ensure(nm); if (g) g.mje++; });
+                    const uniqC = [...new Set(cgo.map(normalize))];
+                    const single = dressed.length === 1 ? dressed[0] : (dressed.length === 0 && uniqC.length === 1 ? cgo[0] : null);
+                    if (single) {
+                        const g = ensure(single); if (!g) return;
+                        g.bc += opp; g.shots += sa;
+                        if (opp === 0 && noSub) g.blan++;
+                        if (my > opp) g.v++; else if (my < opp) { if (rep.isProl) g.dprl++; else g.d++; }
+                    } else {
+                        cgo.forEach(nm => { const g = ensure(nm); if (g) g.bc++; }); // gardiens multiples : seuls les buts explicitement référencés
+                    }
+                });
+            });
+            return byName;
+        }
         // Badge de rang ligue (🥇🥈🥉 top 3, 🦁 meilleur Lynx, rang gris sinon) — à côté des noms
         function leagueBadgeOf(name) {
             try {
@@ -3812,7 +3859,15 @@
                 const rec = st ? st.byName.get(key) : null;
                 if (p.isGoalie) {
                     const kv = (l, v) => `<div class="text-center bg-gray-50 dark:bg-gray-800 rounded-lg p-2"><div class="text-[9px] uppercase font-bold text-gray-400">${l}</div><div class="font-black text-sm">${v}</div></div>`;
-                    el.innerHTML = `<div class="grid grid-cols-4 gap-2">${kv('MJE', p.mje || 0)}${kv('V', p.v || 0)}${kv('D-PR', p.dprl || 0)}${kv('D', p.d || 0)}${kv('Blanchissages', p.blan || 0)}${kv('BC', p.bc || 0)}${kv('Moyenne buts', (typeof p.moy === 'number' && isFinite(p.moy)) ? p.moy.toFixed(2).replace('.', ',') : '-')}${kv('% arrêts', (typeof p.pct === 'number' && isFinite(p.pct)) ? p.pct.toFixed(2).replace('.', ',') + '%' : '-')}</div>` + (rec && rec.mvp ? `<p class="text-sm text-gray-500">⭐ Joueur du match : <strong>${rec.mvp}</strong> fois (matchs suivis)</p>` : '');
+                    // v2.22 : stats auto depuis les rapports archivés (le flux référence le gardien qui encaisse)
+                    let gkAuto = null;
+                    try { gkAuto = (await liveGoalieStats()).get(normalize(p.name)) || null; } catch (e) {}
+                    let gkAutoHtml = '';
+                    if (gkAuto && (gkAuto.mje || gkAuto.bc)) {
+                        const pctA = gkAuto.shots > 0 ? (Math.round((gkAuto.shots - gkAuto.bc) / gkAuto.shots * 1000) / 10).toString().replace('.', ',') + ' %' : null;
+                        gkAutoHtml = `<div class="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 text-sm space-y-1 mt-2"><div class="text-[10px] uppercase font-bold text-gray-400">🎬 Depuis les matchs archivés (calculé automatiquement)</div><div>MJ <strong>${gkAuto.mje}</strong> · BC <strong>${gkAuto.bc}</strong>${pctA ? ` · % arrêts ≈ <strong>${pctA}</strong>` : ''}${gkAuto.blan ? ` · <strong>${gkAuto.blan}</strong> blanchissage(s)` : ''}</div><div class="text-gray-500">Bilan : <strong>${gkAuto.v} V</strong> · ${gkAuto.dprl} D-PR · ${gkAuto.d} D</div></div>`;
+                    }
+                    el.innerHTML = `<div class="grid grid-cols-4 gap-2">${kv('MJE', p.mje || 0)}${kv('V', p.v || 0)}${kv('D-PR', p.dprl || 0)}${kv('D', p.d || 0)}${kv('Blanchissages', p.blan || 0)}${kv('BC', p.bc || 0)}${kv('Moyenne buts', (typeof p.moy === 'number' && isFinite(p.moy)) ? p.moy.toFixed(2).replace('.', ',') : '-')}${kv('% arrêts', (typeof p.pct === 'number' && isFinite(p.pct)) ? p.pct.toFixed(2).replace('.', ',') + '%' : '-')}</div>` + gkAutoHtml + (rec && rec.mvp ? `<p class="text-sm text-gray-500">⭐ Joueur du match : <strong>${rec.mvp}</strong> fois (matchs suivis)</p>` : '');
                     return;
                 }
                 const bits = [];
@@ -3878,16 +3933,20 @@
             toggleModal('player-modal', true); 
         }
 
-        function renderLeaders(list) { 
-            const topPointer = [...list].sort((a,b)=>((b.goals||0)+(b.assists||0))-((a.goals||0)+(a.assists||0)))[0]; 
-            const topScorer = [...list].sort((a,b)=>(b.goals||0)-(a.goals||0))[0]; 
-            const topPen = [...list].sort((a,b)=>(b.penalties||0)-(a.penalties||0))[0]; 
-            let html = ''; 
-            const card = (icon, title, name, val, colorClass) => `<div class="flex flex-col items-center p-4 border rounded ${colorClass} text-center shadow-sm"><div class="text-3xl mb-1">${icon}</div><div class="text-[10px] uppercase font-bold opacity-70">${title}</div><div class="font-bold text-base truncate w-full">${name}</div><div class="font-black text-xl">${val}</div></div>`; 
-            if(topScorer) html += card('🥅', 'Top Buteur', topScorer.name, topScorer.goals, 'bg-blue-50 dark:bg-blue-900/20 border-blue-200'); 
-            if(topPointer) html += card('👑', 'Top Pointeur', topPointer.name, (topPointer.goals||0)+(topPointer.assists||0), 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200'); 
-            if(topPen) html += card('🤬', 'Bad Boy', topPen.name, (topPen.penalties||0)+' min', 'bg-red-50 dark:bg-red-900/20 border-red-200'); 
-            document.getElementById('player-leaders-list').innerHTML = html; 
+        // v2.22 : top buteur/pointeur en AUTO — si les matchs archivés donnent plus que l'import, le chiffre auto gagne (🎬)
+        async function renderLeaders(list) {
+            let auto = null;
+            try { auto = (await livePlayerStats()).byName; } catch (e) {}
+            const merged = list.map(p => { const r = auto && auto.get(normalize(p.name)); const g = Math.max(Number(p.goals) || 0, (r && r.g) || 0); const a = Math.max(Number(p.assists) || 0, (r && r.a) || 0); return Object.assign({}, p, { goals: g, assists: a, gAuto: (r && r.g || 0) > (Number(p.goals) || 0), aAuto: (r && r.a || 0) > (Number(p.assists) || 0) }); });
+            const topPointer = [...merged].sort((a,b)=>((b.goals||0)+(b.assists||0))-((a.goals||0)+(a.assists||0)))[0];
+            const topScorer = [...merged].sort((a,b)=>(b.goals||0)-(a.goals||0))[0];
+            const topPen = [...list].sort((a,b)=>(b.penalties||0)-(a.penalties||0))[0];
+            let html = '';
+            const card = (icon, title, name, val, colorClass) => `<div class="flex flex-col items-center p-4 border rounded ${colorClass} text-center shadow-sm"><div class="text-3xl mb-1">${icon}</div><div class="text-[10px] uppercase font-bold opacity-70">${title}</div><div class="font-bold text-base truncate w-full">${name}</div><div class="font-black text-xl">${val}</div></div>`;
+            if(topScorer) html += card('🥅', 'Top Buteur', topScorer.name, (topScorer.goals||0) + (topScorer.gAuto ? ' 🎬' : ''), 'bg-blue-50 dark:bg-blue-900/20 border-blue-200');
+            if(topPointer) html += card('👑', 'Top Pointeur', topPointer.name, ((topPointer.goals||0)+(topPointer.assists||0)) + ((topPointer.gAuto || topPointer.aAuto) ? ' 🎬' : ''), 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200');
+            if(topPen) html += card('🤬', 'Bad Boy', topPen.name, (topPen.penalties||0)+' min', 'bg-red-50 dark:bg-red-900/20 border-red-200');
+            document.getElementById('player-leaders-list').innerHTML = html;
         }
 
         function renderUsefulLinks() { 
@@ -4810,8 +4869,33 @@
         }
 
         // --- NEW: Goalies Logic ---
-        function renderGoalies(list) {
-            if (!list.length) { document.getElementById('roster-table-body-goalies').innerHTML = '<tr><td colspan="13" class="p-4 text-center text-gray-400 italic">Aucun gardien importé pour cette saison (Admin → Import FFHG → « Stats gardiens »).</td></tr>'; return; }
+        // v2.22 : si aucun gardien n'est importé (CSV vide pour la saison), la feuille se remplit en AUTO
+        // depuis les matchs archivés (flux FFHG) ; si un import existe, il reste la source affichée.
+        async function renderGoalies(list) {
+            const body = document.getElementById('roster-table-body-goalies');
+            if (!list.length) {
+                let auto = [];
+                try { auto = [...(await liveGoalieStats()).values()].filter(g => g && g.mje > 0).sort((a, b) => b.mje - a.mje); } catch (e) {}
+                if (!auto.length) { body.innerHTML = '<tr><td colspan="13" class="p-4 text-center text-gray-400 italic">Aucun gardien importé pour cette saison (Admin → Import FFHG → « Stats gardiens »). Les stats auto apparaîtront dès qu\'un match est archivé.</td></tr>'; return; }
+                body.innerHTML = '<tr class="text-xs text-gray-400 uppercase"><td colspan="13" class="p-2 pl-3">🎬 Depuis les matchs archivés (auto)</td></tr>' + auto.map(g => `
+                <tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer goalie-row" data-name="${g.name}">
+                    <td class="p-3 font-bold">#</td>
+                    <td class="p-3 font-bold sticky left-0 bg-white dark:bg-dark-card z-10 shadow-sm md:shadow-none">${playerPhotoOf(g.name) ? `<img src="${playerPhotoOf(g.name)}" alt="" class="w-7 h-7 rounded-full object-cover inline-block align-middle mr-1 border border-gray-300 dark:border-gray-600">` : ''}${g.name}</td>
+                    <td class="p-3 text-center text-gray-500">${g.mje}</td>
+                    <td class="p-3 text-center text-gray-500">${g.mje}</td>
+                    <td class="p-3 text-center text-xs font-mono">${g.mje * 60}</td>
+                    <td class="p-3 text-center font-bold text-green-600">${g.v}</td>
+                    <td class="p-3 text-center text-orange-500">${g.dprl}</td>
+                    <td class="p-3 text-center text-red-500">${g.d}</td>
+                    <td class="p-3 text-center font-bold text-blue-500">${g.blan}</td>
+                    <td class="p-3 text-center text-gray-500">${g.bc}</td>
+                    <td class="p-3 text-center font-bold">${g.mje ? (g.bc / g.mje).toFixed(2).replace('.', ',') : '-'}</td>
+                    <td class="p-3 text-center text-gray-500">${g.shots - g.bc}</td>
+                    <td class="p-3 text-center font-black">${g.shots ? (100 * (g.shots - g.bc) / g.shots).toFixed(2).replace('.', ',') : '-'}%</td>
+                </tr>`).join('');
+                document.querySelectorAll('.goalie-row').forEach(r => r.onclick = () => { const g = auto.find(x => x.name === r.dataset.name); if (g) { g.isGoalie = true; openPlayerModal(Object.assign({ goals: 0, assists: 0, penalties: 0 }, g), true); } });
+                return;
+            }
             document.getElementById('roster-table-body-goalies').innerHTML = list.map(g => `
                 <tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer goalie-row" data-id="${g.id||''}">
                     <td class="p-3 font-bold">${g.number||'#'}</td>
@@ -6534,6 +6618,9 @@ ${cards}
             const lastTicket = (ticketItems || [])[0];
             if (lastTicket) rows.push(`<div class="p-2 rounded bg-lynx-red/10 text-[11px] leading-relaxed"><b>Dernière détection :</b> ${xmlEsc(lastTicket.label)} <span class="text-gray-400">(${ago(lastTicket.detectedAt)})</span></div>`);
             rows.push(`<div class="p-2 rounded bg-white dark:bg-gray-700 flex justify-between gap-2"><span class="font-bold">🔔 Test notifications</span><span>${pt.pushedTo != null ? `envoyé à ${pt.pushedTo} abonné(s), ${ago(pt.pushedAtIso)}` : (pt.requestedAt ? `demandé ${ago(pt.requestedAt)} — en attente de l'action GitHub (≤5 min)` : `jamais testé`)}</span></div>`);
+            // v2.22 : visibilité des échecs push — clé VAPID vue par l'action + erreur du dernier test
+            if (h.pushKeyOk && h.pushKeyOk !== 'oui') rows.push(`<div class="p-2 rounded bg-red-100 dark:bg-red-900/30 text-[11px] leading-relaxed"><b>🚫 Notifications push BLOQUÉES côté action :</b> ${xmlEsc(h.pushKeyOk)} — à corriger dans le dépôt lynx-feed (Secrets des Actions GitHub), puis re-cliquer le test.</div>`);
+            if (pt.lastError) rows.push(`<div class="p-2 rounded bg-orange-100 dark:bg-orange-900/30 text-[11px] leading-relaxed"><b>⚠️ Dernier test push — erreur de l'action :</b> ${xmlEsc(pt.lastError)}</div>`);
             if (h.feedsFailed) rows.push(`<div class="p-2 rounded bg-orange-100 dark:bg-orange-900/30 text-[11px] leading-relaxed"><b>⚠️ Flux externes en échec :</b> ${xmlEsc(h.feedsFailed)}</div>`);
             el.innerHTML = rows.join('');
         }
@@ -7069,6 +7156,17 @@ ${cards}
             }
             document.getElementById('theme-toggle').onclick = () => document.documentElement.classList.toggle('dark');
             try { initHomeCollapse(); } catch (e) {} // v2.22 : cases de l'accueil réductibles
+            // v2.22 : récupération auto des résultats FFHG — une fois par jour (les matchs de la veille
+            // se remplissent tout seuls : scores au calendrier, déroulés archivés pour les stats et « Revivre »)
+            try {
+                const todayKey = new Date().toISOString().slice(0, 10);
+                if (localStorage.getItem('lynx_ffhg_sync_day') !== todayKey) {
+                    localStorage.setItem('lynx_ffhg_sync_day', todayKey);
+                    let tries = 0;
+                    const runSync = () => { if ((allMatches || []).length || ++tries >= 3) ffhgSyncResults({ silent: true }).catch(() => {}); else setTimeout(runSync, 30000); };
+                    setTimeout(runSync, 15000);
+                }
+            } catch (e) {}
             
             // MOBILE MODE TOGGLE
             const toggleBtn = document.getElementById('mobile-mode-toggle');
@@ -7501,17 +7599,36 @@ ${cards}
                 const groups = {};
                 allMatches.forEach(m => { if (!m.date || !m.homeTeam || !m.awayTeam) return; const k = keyOf(m); (groups[k] = groups[k] || []).push(m); });
                 const dups = Object.values(groups).filter(g => g.length > 1);
-                if (!dups.length) { appAlert('✅ Aucun match en double détecté.'); return; }
-                const toDelete = [];
-                dups.forEach(g => {
-                    const rank = m => ((m.scoreHome != null || m.scoreAway != null) ? 2 : 0) + (/T23:00:00/.test(String(m.date)) ? 0 : 1);
-                    g.sort((a, b) => rank(b) - rank(a));
-                    g.forEach(m => { if (m.id !== g[0].id) toDelete.push(m); });
-                });
+                const toDelete = []; const seenDel = new Set();
+                const rank = m => ((m.scoreHome != null || m.scoreAway != null) ? 2 : 0) + (/T23:00:00/.test(String(m.date)) ? 0 : 1);
+                dups.forEach(g => { g.sort((a, b) => rank(b) - rank(a)); g.forEach(m => { if (m.id !== g[0].id && !seenDel.has(m.id)) { toDelete.push(m); seenDel.add(m.id); } }); });
+                // v2.22 : doublons à quelques jours d'écart — un vieux match re-suivi en direct s'enregistrait à la
+                // date du jour ; mêmes équipes à ±7 jours avec le MÊME score = doublon, on garde le plus ancien (le vrai)
+                const fin = allMatches.filter(m => m && m.date && m.homeTeam && m.awayTeam && isMatchFinished(m) && !seenDel.has(m.id));
+                for (let i = 0; i < fin.length; i++) for (let j = i + 1; j < fin.length; j++) {
+                    const a = fin[i], b = fin[j];
+                    if (seenDel.has(a.id) || seenDel.has(b.id)) continue;
+                    if (Number(a.scoreHome) !== Number(b.scoreHome) || Number(a.scoreAway) !== Number(b.scoreAway)) continue;
+                    if (Math.abs(new Date(a.date).getTime() - new Date(b.date).getTime()) > 7 * 864e5) continue;
+                    const pair = [a, b].sort((x, y) => new Date(x.date) - new Date(y.date));
+                    const del = pair[1]; // à score égal, le plus récent part (le plus ancien = le vrai match, à sa vraie date)
+                    if (!seenDel.has(del.id)) { toDelete.push(del); seenDel.add(del.id); }
+                }
+                if (!toDelete.length) { appAlert('✅ Aucun match en double détecté.'); return; }
                 appConfirm(`Supprimer ${toDelete.length} match(s) en double ? On garde la version avec score, sinon celle avec l'horaire réel.`, async () => {
                     let done = 0;
                     for (const m of toDelete) { try { await deleteDoc(doc(db, `${basePath}/calendar/${m.id}`)); done++; } catch (e) {} }
                     appAlert(`✅ ${done} doublon(s) supprimé(s) — calendrier propre.`);
+                });
+            };
+
+            // v2.22 : bouton « 🔄 Résultats FFHG » — récupération manuelle complète (résultats + déroulés)
+            const btnFfhgSync = document.getElementById('btn-ffhg-sync');
+            if (btnFfhgSync) btnFfhgSync.onclick = () => {
+                if (!adminCanEdit()) { appAlert('🔒 Réservé à l\'Admin déverrouillé.'); return; }
+                appConfirm('Récupérer les résultats FFHG maintenant ?\n\nRemplit les scores manquants de la saison en cours (ne touche JAMAIS aux scores déjà saisis), corrige les horaires à minuit, note les prolongations/tirs au but, et archive les déroulés récents (buteurs, pénalités, MVP).', async () => {
+                    btnFfhgSync.disabled = true;
+                    try { await ffhgSyncResults({}); } finally { btnFfhgSync.disabled = false; }
                 });
             };
 
@@ -8142,6 +8259,8 @@ ${cards}
                     team: ev.equipe ? (ev.equipe.libelle_court || ev.equipe.libelle || '') : '',
                     teamId: ev.equipe ? ev.equipe.id : null,
                     detail: liveEvtDetail(ev),
+                    // v2.22 : le flux référence le GARDIEN qui encaisse chaque but → stats gardiens automatiques
+                    gkA: ev.type === 'BUT' && ev.gardien ? livePlayerName(ev.gardien) : null,
                     dur: (ev.duree != null ? ev.duree : ev.temps_sanction) || null,
                     sitRaw: ev.sup_numerique || ev.superiorite || ev.situation || ev.type_but || (ev.surnombre ? String(ev.surnombre.code || '') + ' ' + String(ev.surnombre.libelle || '') : null),
                     onIce: Array.isArray(ev.joueurs_plus_ids) ? ev.joueurs_plus_ids.map(pid => partMap[pid]).filter(Boolean) : null
@@ -8342,23 +8461,30 @@ ${cards}
                 const btn = document.getElementById('live-btn-detect');
                 const inp = document.getElementById('live-match-url');
                 if (btn) { btn.disabled = true; btn.innerHTML = '🔍 Recherche…'; }
-                let found = null, lastErr = null;
+                let found = null, lastErr = null, foundWhen = '';
                 try {
                     const rows = await ffhgSeasonRows();
                     if (!rows.length) lastErr = new Error('vide');
                     const d0 = new Date(); d0.setHours(0, 0, 0, 0);
                     const d1 = new Date(d0.getTime() + 24 * 3600e3);
-                    for (const r of rows) {
-                        const t = new Date(r.date).getTime();
-                        if (!(t >= d0.getTime() && t < d1.getTime())) continue;
-                        if (liveIsMyTeam(r.home) || liveIsMyTeam(r.homeFull) || liveIsMyTeam(r.away) || liveIsMyTeam(r.awayFull)) { found = r.id; break; }
+                    const mine = rows.filter(r => liveIsMyTeam(r.home) || liveIsMyTeam(r.homeFull) || liveIsMyTeam(r.away) || liveIsMyTeam(r.awayFull));
+                    // v2.22 : match EN COURS prioritaire, puis match du jour, puis PROCHAIN match de l'équipe suivie (toutes dates)
+                    found = (mine.find(r => r.live) || {}).id || null;
+                    if (found) foundWhen = 'EN COURS en ce moment';
+                    if (!found) {
+                        const today = mine.find(r => { const t = new Date(r.date).getTime(); return t >= d0.getTime() && t < d1.getTime(); });
+                        if (today) { found = today.id; foundWhen = 'aujourd\'hui à ' + new Date(today.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+                    }
+                    if (!found) {
+                        const next = mine.filter(r => !r.done && !r.live && new Date(r.date).getTime() > Date.now()).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+                        if (next) { found = next.id; foundWhen = 'le ' + new Date(next.date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' à ' + new Date(next.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + ' (' + (next.homeFull || next.home) + ' – ' + (next.awayFull || next.away) + ')'; }
                     }
                 } catch (e) { lastErr = e; }
                 if (btn) { btn.disabled = false; btn.innerHTML = '🪄 <span class="hidden md:inline">Trouver le match du jour</span>'; }
                 if (found) {
                     if (inp) inp.value = found;
                     const stl = document.getElementById('live-status-line');
-                    if (stl) stl.textContent = '🪄 Match de ' + (liveFollowTeam || 'Valence') + ' détecté (n° ' + found + ') ! Vérifie puis « Démarrer la surveillance ». Sais-tu le aussi dans Admin → RSS → Alertes buts pour les push.';
+                    if (stl) stl.textContent = '🪄 Match ' + (foundWhen || 'détecté') + ' (n° ' + found + ') — pré-rempli automatiquement. « Démarrer la surveillance » le jour J ; les alertes push, elles, se règlent dans Admin → RSS → Alertes buts.';
                 } else {
                     const stl = document.getElementById('live-status-line');
                     if (stl) stl.textContent = '🪄 Aucun match de Valence détecté aujourd\'hui' + (lastErr ? ' (flux FFHG indisponible)' : '') + ' — colle le numéro du match à la main.';
@@ -8734,9 +8860,14 @@ ${cards}
                         shotsH: st.shotsH || 0, shotsA: st.shotsA || 0,
                         mvps: (st.mvps || []).map(x => x.name + ' (' + (x.teamId === st.homeId ? st.homeName : st.awayName) + ')'),
                         patinoire: st.patinoire || '', journee: st.journee || null, phase: st.phaseTxt || '',
-                        events: evs.map(ev => ({ t: ev.temps || 0, time: ev.time, ty: ev.type, side: ev.teamId === st.homeId ? 'H' : (ev.teamId === st.awayId ? 'A' : '?'), who: ev.detail || '', sit: ev.sit || null, ice: (ev.onIce && ev.onIce.length) ? ev.onIce.join(', ') : null }))
+                        // v2.22 : gardiens alignés (pour les stats auto) + gardien qui encaisse sur chaque but
+                        gksH: (st.players || []).filter(p => p && p.isGoalie && p.teamId === st.homeId).map(p => p.name),
+                        gksA: (st.players || []).filter(p => p && p.isGoalie && p.teamId === st.awayId).map(p => p.name),
+                        events: evs.map(ev => ({ t: ev.temps || 0, time: ev.time, ty: ev.type, side: ev.teamId === st.homeId ? 'H' : (ev.teamId === st.awayId ? 'A' : '?'), who: ev.detail || '', sit: ev.sit || null, ice: (ev.onIce && ev.onIce.length) ? ev.onIce.join(', ') : null, gkA: ev.gkA || null }))
                     };
                     await setDoc(doc(db, `${basePath}/live-reports/${id}`), rep, { merge: true });
+                    // v2.22 : le rapport vient de changer — les stats joueurs/gardiens dérivées sont recalculées au prochain rendu
+                    try { _pstatsCache = { t: 0, v: null }; } catch (e) {}
                     return true;
                 } catch (e) { console.warn('liveSaveReport', e); return false; }
             }
@@ -9155,13 +9286,21 @@ ${cards}
                 if (btnSaveL && btnSaveL.dataset.busy === '1') return; // v2.22 : anti double-clic
                 if (btnSaveL) { btnSaveL.dataset.busy = '1'; btnSaveL.disabled = true; }
                 try {
+                    // v2.22 : date fiable — sur un VIEUX match re-suivi, le flux live ne donne pas la date et
+                    // l'enregistrement partait à la date du jour (doublon). On la récupère dans le cache FFHG
+                    // par numéro de rencontre (l'ID de l'URL hockeyfrance.com/rencontre/NNNNN/).
+                    const rn = liveMatchNum(document.getElementById('live-match-url').value);
+                    if (rn && (!st.dateRencontre || !/(\d{2})[\/\-.](\d{2})[\/\-.](\d{4})/.test(String(st.dateRencontre)))) {
+                        try { const row = (await ffhgSeasonRows()).find(x => String(x.id) === String(rn)); if (row && row.date) st.dateRencontre = new Date(row.date).toLocaleDateString('fr-FR'); } catch (e) {}
+                    }
                     const { dIso, id } = liveResultId(st);
-                    // v2.22 : ANTI-DOUBLON — si le match existe déjà au calendrier (mêmes équipes à ±3 jours),
+                    // v2.22 : ANTI-DOUBLON élargi — si le match existe déjà au calendrier (mêmes équipes à ±7 jours),
                     // on MET À JOUR ce match au lieu d'en créer un nouveau (les noms du flux diffèrent souvent du calendrier).
                     const sameName = (x, y) => { const nx = normalize(x || ''), ny = normalize(y || ''); return !!(nx && ny && (nx === ny || nx.includes(ny) || ny.includes(nx))); };
-                    const exist = (allMatches || []).find(m => m && m.season === activeSeason &&
+                    const exist = (allMatches || []).filter(m => m && m.season === activeSeason &&
                         (((sameName(m.homeTeam, st.homeName) && sameName(m.awayTeam, st.awayName)) || (sameName(m.homeTeam, st.awayName) && sameName(m.awayTeam, st.homeName)))) &&
-                        m.date && Math.abs(new Date(m.date).getTime() - new Date(dIso).getTime()) <= 3 * 864e5);
+                        m.date && Math.abs(new Date(m.date).getTime() - new Date(dIso).getTime()) <= 7 * 864e5)
+                        .sort((a, b) => Math.abs(new Date(a.date).getTime() - new Date(dIso).getTime()) - Math.abs(new Date(b.date).getTime() - new Date(dIso).getTime()))[0];
                     const m = exist
                         ? { scoreHome: st.homeScore, scoreAway: st.awayScore, isProl: liveHadOvertime(st) }
                         : { date: dIso, season: activeSeason, poule: 'B', homeTeam: st.homeName, awayTeam: st.awayName, scoreHome: st.homeScore, scoreAway: st.awayScore, isProl: liveHadOvertime(st), type: 'Saison' };
@@ -9174,6 +9313,89 @@ ${cards}
                 } catch (e) { console.warn('save live result', e); appAlert('Enregistrement impossible : ' + (e && e.message ? e.message : 'erreur')); }
                 finally { if (btnSaveL) { btnSaveL.dataset.busy = '0'; btnSaveL.disabled = false; } }
             };
+            // ---- v2.22 : récupération automatique des résultats FFHG ----
+            // L'interface JSON officielle (get_rencontres, celle des pages hockeyfrance.com) donne toute la saison :
+            // scores, horaires, prolongation (PRL) / tirs au but (TAB). On remplit le calendrier de la SAISON
+            // COURANTE uniquement, sans jamais écraser un score saisi différent (divergences signalées), et on
+            // archive le déroulé (buteurs, assists, pénalités, MVP) des matchs récents sans rapport.
+            async function ffhgSyncResults(opts) {
+                const silent = !!(opts && opts.silent);
+                const out = { filled: 0, diverge: [], reports: 0, err: null };
+                try {
+                    const rows = await ffhgSeasonRows();
+                    const now = Date.now();
+                    const sameName = (x, y) => { const nx = normalize(x || ''), ny = normalize(y || ''); return !!(nx && ny && (nx === ny || nx.includes(ny) || ny.includes(nx))); };
+                    for (const r of rows) {
+                        if (r.gh == null || r.ga == null || !r.done) continue;
+                        const rd = new Date(r.date).getTime();
+                        if (!isFinite(rd) || rd > now + 864e5 || rd < now - 120 * 864e5) continue; // garde-fou saisons : la saison en cours seulement
+                        const cand = (allMatches || []).filter(m => m && m.season === activeSeason && (!m.type || m.type === 'Saison') && m.homeTeam && m.awayTeam
+                            && ((sameName(m.homeTeam, r.home) && sameName(m.awayTeam, r.away)) || (sameName(m.homeTeam, r.away) && sameName(m.awayTeam, r.home))))
+                            .sort((a, b) => Math.abs(new Date(a.date).getTime() - rd) - Math.abs(new Date(b.date).getTime() - rd))[0];
+                        if (!cand || Math.abs(new Date(cand.date).getTime() - rd) > 7 * 864e5) continue;
+                        const same = sameName(cand.homeTeam, r.home) && !sameName(cand.homeTeam, r.away);
+                        const gh = same ? r.gh : r.ga, ga = same ? r.ga : r.gh;
+                        const patch = {};
+                        if (cand.scoreHome == null || cand.scoreAway == null) {
+                            patch.scoreHome = gh; patch.scoreAway = ga;
+                            patch.isProl = r.vp === 'PRL' || r.vp === 'TAB';
+                            out.filled++;
+                        } else if (Number(cand.scoreHome) !== gh || Number(cand.scoreAway) !== ga) {
+                            out.diverge.push(cand.homeTeam + ' ' + cand.scoreHome + '-' + cand.scoreAway + ' ' + cand.awayTeam + ' (FFHG : ' + gh + '-' + ga + ')');
+                            continue;
+                        }
+                        if (/T23:00:00|T00:00:00/.test(String(cand.date)) && r.date) patch.date = new Date(r.date).toISOString(); // vraie heure du flux
+                        if (Object.keys(patch).length) { await setDoc(doc(db, `${basePath}/calendar/${cand.id}`), patch, { merge: true }); Object.assign(cand, patch); }
+                    }
+                    // v2.22 : archivage rétroactif par tranches — 3 matchs par passage en auto quotidien, 8 en manuel
+                    out.reports = await ffhgArchiveReports(silent ? 3 : 8);
+                } catch (e) { out.err = e && e.message ? e.message : String(e); }
+                // v2.22 : les déroulés nouvellement archivés doivent se voir IMMÉDIATEMENT — caches stats invalidés + rafraîchissement
+                try { _pstatsCache = { t: 0, v: null }; } catch (e) {}
+                try { _stCache = { t: 0, v: null }; } catch (e) {}
+                try { scheduleUI(); } catch (e) {}
+                if (!silent) {
+                    if (out.err) appAlert('❌ Récupération impossible : ' + out.err);
+                    else appAlert('🔄 Récupération FFHG terminée.\n\n✅ ' + out.filled + ' résultat(s) ajouté(s) au calendrier\n🎬 ' + out.reports + ' déroulé(s) archivé(s) (la base se complète par tranches à chaque clic — toute la saison est balayée)' + (out.diverge.length ? '\n\n⚠️ Divergences (score saisi ≠ FFHG — RIEN modifié, à vérifier) :\n' + out.diverge.join('\n') : ''));
+                }
+                return out;
+            }
+            async function ffhgArchiveReports(maxN) {
+                let n = 0;
+                try {
+                    const have = new Set((await dbFetchCol('live-reports')).map(d => d.id));
+                    // v2.22 : garde partagée (id rencontre → 1) — un match déjà récupéré une fois n'est plus re-fetch,
+                    // ce qui permet de balayer TOUTE la saison par petites tranches sans exploser le quota de requêtes.
+                    let doneMap = {};
+                    try { doneMap = JSON.parse(localStorage.getItem('lynx_ffhg_retro_done') || '{}') || {}; } catch (e) { doneMap = {}; }
+                    const rows = await ffhgSeasonRows();
+                    const now = Date.now();
+                    for (const r of rows) {
+                        if (n >= maxN) break;
+                        if (!r.done || r.gh == null || !r.id) continue;
+                        if (doneMap[String(r.id)]) continue; // déjà récupéré une fois
+                        const t = new Date(r.date).getTime();
+                        if (!isFinite(t) || t > now || t < now - 120 * 864e5) continue; // v2.22 : toute la saison en cours (avant : 10 jours)
+                        let raw = null;
+                        try { raw = await liveFetchText('https://www.hockeyfrance.com/competitions/wp-admin/admin-ajax.php?action=live_rencontre_maj&rencontre_id=' + r.id); } catch (e) { continue; }
+                        if (!raw) continue;
+                        let data = null; try { data = JSON.parse(raw); } catch (e) { continue; }
+                        if (!data || !Array.isArray(data.scores)) continue;
+                        const st = liveParse(data, raw);
+                        if (!st || !st.finished) continue;
+                        st.dateRencontre = new Date(t).toLocaleDateString('fr-FR');
+                        const rid = liveResultId(st).id;
+                        if (have.has(rid)) { doneMap[String(r.id)] = 1; continue; } // déjà archivé (suivi en direct)
+                        await liveSaveReport(st); // buteurs, assists, pénalités, MVP, tiers — la base live se remplit toute seule
+                        try { liveScoutHarvest(st); } catch (e) {}
+                        doneMap[String(r.id)] = 1;
+                        try { localStorage.setItem('lynx_ffhg_retro_done', JSON.stringify(doneMap)); } catch (e) {}
+                        n++;
+                    }
+                    try { localStorage.setItem('lynx_ffhg_retro_done', JSON.stringify(doneMap)); } catch (e) {}
+                } catch (e) {}
+                return n;
+            }
             // v2.18 : réparation d'un rapport live (inversion domicile/extérieur du flux, « ap » erroné)
             const btnFixRepSwap = document.getElementById('btn-fixrep-swap');
             if (btnFixRepSwap) btnFixRepSwap.onclick = async () => {
