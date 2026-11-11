@@ -1222,6 +1222,7 @@
                         <button id="btn-purge-ranking" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Classements</button>
                         <button id="btn-purge-roster" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Effectif (Joueurs+Gardiens)</button>
                         <button id="btn-purge-league" class="py-2 px-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-xs">Purger Top Ligue</button>
+                        <button id="btn-restore-backup" class="py-2 px-2 bg-green-700 hover:bg-green-800 text-white rounded font-bold text-xs" title="Recrée depuis la sauvegarde mensuelle (dépôt lynx-feed) tout document disparu : calendrier, effectifs, classements, rapports live. Rien d'existant n'est modifié.">♻️ Restaurer sauvegarde</button>
                         <button id="btn-dedupe-calendar" class="py-2 px-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded font-bold text-xs" title="Supprime les matchs en double (même jour, mêmes équipes, casse différente — ou mêmes équipes à quelques jours d'écart avec le même score)">🧹 Dédoublonner Matchs</button>
                         <button id="btn-ffhg-sync" class="py-2 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-xs" title="Récupère les résultats, horaires et prolongations depuis hockeyfrance.com (saison en cours, sans écraser les scores saisis) et archive les déroulés récents (buteurs, pénalités, MVP)">🔄 Résultats FFHG</button>
                     </div>
@@ -7603,15 +7604,21 @@ ${cards}
                 const rank = m => ((m.scoreHome != null || m.scoreAway != null) ? 2 : 0) + (/T23:00:00/.test(String(m.date)) ? 0 : 1);
                 dups.forEach(g => { g.sort((a, b) => rank(b) - rank(a)); g.forEach(m => { if (m.id !== g[0].id && !seenDel.has(m.id)) { toDelete.push(m); seenDel.add(m.id); } }); });
                 // v2.22 : doublons à quelques jours d'écart — un vieux match re-suivi en direct s'enregistrait à la
-                // date du jour ; mêmes équipes à ±7 jours avec le MÊME score = doublon, on garde le plus ancien (le vrai)
+                // date du jour. CORRECTION (le critère initial comparait les SANS les équipes : deux matchs
+                // DIFFÉRENTS à une semaine d'écart avec le même score étaient supprimés — c'est ce qui a vidé le
+                // calendrier) : désormais, mêmes équipes (dans un sens ou l'autre) OBLIGATOIRE, scores non nuls et égaux,
+                // ±7 jours, et on garde le plus ancien.
+                const sameTeams = (x, y) => { const nx = [normalize(x.homeTeam), normalize(x.awayTeam)].sort().join('|'), ny = [normalize(y.homeTeam), normalize(y.awayTeam)].sort().join('|'); return nx && ny && nx === ny; };
                 const fin = allMatches.filter(m => m && m.date && m.homeTeam && m.awayTeam && isMatchFinished(m) && !seenDel.has(m.id));
                 for (let i = 0; i < fin.length; i++) for (let j = i + 1; j < fin.length; j++) {
                     const a = fin[i], b = fin[j];
                     if (seenDel.has(a.id) || seenDel.has(b.id)) continue;
+                    if (!sameTeams(a, b)) continue; // PAS les mêmes équipes → PAS un doublon, quoi que soient les scores
+                    if (a.scoreHome == null || a.scoreAway == null || b.scoreHome == null || b.scoreAway == null) continue;
                     if (Number(a.scoreHome) !== Number(b.scoreHome) || Number(a.scoreAway) !== Number(b.scoreAway)) continue;
                     if (Math.abs(new Date(a.date).getTime() - new Date(b.date).getTime()) > 7 * 864e5) continue;
                     const pair = [a, b].sort((x, y) => new Date(x.date) - new Date(y.date));
-                    const del = pair[1]; // à score égal, le plus récent part (le plus ancien = le vrai match, à sa vraie date)
+                    const del = pair[1]; // à équipes et score égaux, le plus récent part (le plus ancien = le vrai match, à sa vraie date)
                     if (!seenDel.has(del.id)) { toDelete.push(del); seenDel.add(del.id); }
                 }
                 if (!toDelete.length) { appAlert('✅ Aucun match en double détecté.'); return; }
@@ -7619,6 +7626,40 @@ ${cards}
                     let done = 0;
                     for (const m of toDelete) { try { await deleteDoc(doc(db, `${basePath}/calendar/${m.id}`)); done++; } catch (e) {} }
                     appAlert(`✅ ${done} doublon(s) supprimé(s) — calendrier propre.`);
+                });
+            };
+
+            // v2.22 : bouton « ♻️ Restaurer sauvegarde » — recrée tout document présent dans la sauvegarde mensuelle
+            // (backup-AAAA-MM.json, commitée par l'action chaque mois dans lynx-feed) mais absent de la base.
+            // Strictement ADDITIF : un document existant n'est jamais touché. Réparable après tout effacement accidentel.
+            const btnRestoreBak = document.getElementById('btn-restore-backup');
+            if (btnRestoreBak) btnRestoreBak.onclick = () => {
+                if (!adminCanEdit()) { appAlert('🔒 Réservé à l\'Admin déverrouillé.'); return; }
+                appConfirm('Restaurer les données manquantes depuis la sauvegarde mensuelle ?\n\nRecrée tout document présent dans la sauvegarde mais absent de la base (calendrier, effectifs, classements, gardiens, rapports live…). Rien d\'existant n\'est modifié.', async () => {
+                    btnRestoreBak.disabled = true;
+                    try {
+                        const nowD = new Date();
+                        const prevD = new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1);
+                        const names = [nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0'), prevD.getFullYear() + '-' + String(prevD.getMonth() + 1).padStart(2, '0')];
+                        let bak = null;
+                        for (const nm of names) {
+                            try { const rsp = await fetch('https://raw.githubusercontent.com/gedebelcho7/lynx-feed/main/backup-' + nm + '.json'); if (rsp.ok) { bak = await rsp.json(); break; } } catch (e) {}
+                        }
+                        if (!bak || !bak.collections) { appAlert('❌ Sauvegarde introuvable dans le dépôt lynx-feed (backup-AAAA-MM.json).'); return; }
+                        let restored = 0; const perCol = [];
+                        for (const col of Object.keys(bak.collections)) {
+                            let have = new Set();
+                            try { have = new Set((await dbFetchCol(col)).map(d => d.id)); } catch (e) {}
+                            let c1 = 0;
+                            for (const d of (bak.collections[col] || [])) {
+                                if (!d || !d.id || have.has(d.id)) continue;
+                                const data = Object.assign({}, d); delete data.id;
+                                try { await setDoc(doc(db, `${basePath}/${col}/${d.id}`), data); c1++; restored++; } catch (e) {}
+                            }
+                            if (c1) perCol.push('• ' + col + ' : ' + c1 + ' recréé(s)');
+                        }
+                        appAlert('♻️ Restauration terminée (sauvegarde du ' + new Date(bak.generatedAt).toLocaleDateString('fr-FR') + ') : ' + restored + ' document(s) recréé(s).\n' + perCol.join('\n') + (restored ? '\n\n➡️ Enchaîne sur « 🔄 Résultats FFHG » pour remettre les scores et horaires des derniers matchs (la sauvegarde date de quelques jours).' : '\n\nRien à restaurer — la base contient déjà tout.'));
+                    } finally { btnRestoreBak.disabled = false; }
                 });
             };
 
@@ -9320,7 +9361,7 @@ ${cards}
             // archive le déroulé (buteurs, assists, pénalités, MVP) des matchs récents sans rapport.
             async function ffhgSyncResults(opts) {
                 const silent = !!(opts && opts.silent);
-                const out = { filled: 0, diverge: [], reports: 0, err: null };
+                const out = { filled: 0, diverge: [], reports: 0, created: 0, err: null };
                 try {
                     const rows = await ffhgSeasonRows();
                     const now = Date.now();
@@ -9332,7 +9373,18 @@ ${cards}
                         const cand = (allMatches || []).filter(m => m && m.season === activeSeason && (!m.type || m.type === 'Saison') && m.homeTeam && m.awayTeam
                             && ((sameName(m.homeTeam, r.home) && sameName(m.awayTeam, r.away)) || (sameName(m.homeTeam, r.away) && sameName(m.awayTeam, r.home))))
                             .sort((a, b) => Math.abs(new Date(a.date).getTime() - rd) - Math.abs(new Date(b.date).getTime() - rd))[0];
-                        if (!cand || Math.abs(new Date(cand.date).getTime() - rd) > 7 * 864e5) continue;
+                        if (!cand || Math.abs(new Date(cand.date).getTime() - rd) > 7 * 864e5) {
+                            // v2.22 : match absent du calendrier (import incomplet, effacement…) → recréé depuis le flux officiel,
+                            // avec un id DÉTERMINISTE (ffhg-<n° rencontre>) : relancer ne crée jamais de doublon. D1 uniquement.
+                            if (r.div === 'D1' && r.id) {
+                                const nid = 'ffhg-' + r.id;
+                                try {
+                                    await setDoc(doc(db, `${basePath}/calendar/${nid}`), { season: activeSeason, type: 'Saison', homeTeam: r.homeFull || r.home, awayTeam: r.awayFull || r.away, date: new Date(r.date).toISOString(), scoreHome: r.gh, scoreAway: r.ga, isProl: r.vp === 'PRL' || r.vp === 'TAB', venue: '', note: '' });
+                                    out.created++;
+                                } catch (e) {}
+                            }
+                            continue;
+                        }
                         const same = sameName(cand.homeTeam, r.home) && !sameName(cand.homeTeam, r.away);
                         const gh = same ? r.gh : r.ga, ga = same ? r.ga : r.gh;
                         const patch = {};
@@ -9356,7 +9408,7 @@ ${cards}
                 try { scheduleUI(); } catch (e) {}
                 if (!silent) {
                     if (out.err) appAlert('❌ Récupération impossible : ' + out.err);
-                    else appAlert('🔄 Récupération FFHG terminée.\n\n✅ ' + out.filled + ' résultat(s) ajouté(s) au calendrier\n🎬 ' + out.reports + ' déroulé(s) archivé(s) (la base se complète par tranches à chaque clic — toute la saison est balayée)' + (out.diverge.length ? '\n\n⚠️ Divergences (score saisi ≠ FFHG — RIEN modifié, à vérifier) :\n' + out.diverge.join('\n') : ''));
+                    else appAlert('🔄 Récupération FFHG terminée.\n\n✅ ' + out.filled + ' résultat(s) ajouté(s) au calendrier\n🆕 ' + out.created + ' match(s) manquant(s) recréé(s)\n🎬 ' + out.reports + ' déroulé(s) archivé(s) (la base se complète par tranches à chaque clic — toute la saison est balayée)' + (out.diverge.length ? '\n\n⚠️ Divergences (score saisi ≠ FFHG — RIEN modifié, à vérifier) :\n' + out.diverge.join('\n') : ''));
                 }
                 return out;
             }
