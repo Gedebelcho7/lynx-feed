@@ -8151,7 +8151,10 @@ ${cards}
                 const evtMax = events.reduce((mx, ev) => Math.max(mx, ev.temps || 0), 0);
                 const gkOut = {};
                 events.forEach(ev => { if (ev.type === 'REMPLACANT' && ev.gk) gkOut[ev.teamId] = ev.gk === 'out'; });
-                const isOvertime = ms > 3600000; // chrono > 60 min → prolongation
+                // v2.22 : prolongation = chrono > 60 min ET score ÉGAL — le chrono du flux peut dépasser 60 min
+                // sur un match terminé dans le temps réglementaire (Valence-Nantes 3-1 du 07/11) : un score
+                // final non nul rend la prolongation mathématiquement impossible, on ne croit plus le chrono seul.
+                const isOvertime = ms > 3600000 && (home.score || 0) === (away.score || 0);
                 // v2.14 : correction du détecteur de fusillade — les tirs cadrés du match (type TIR) étaient confondus
                 // avec les tirs au but ! Fusillade = clé tirs_aux_but remplie, tentative/but à 65 min+ de chrono,
                 // ou chrono arrêté après prolongation sur un score de parité.
