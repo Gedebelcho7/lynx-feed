@@ -1576,7 +1576,7 @@
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
+        const mistralApiKey = "mstrl_YrujuVF7QQ2YfLzXfURY05Rsrkw5uP9K_0154kT";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -7870,8 +7870,9 @@ ${cards}
             let liveAlertsEnabled = false;
             const LIVE_STORE = 'lynx_live_settings';
             let liveTimer = null, liveWs = null, liveWsPinged = 0, liveProxyIdx = 0;
+            let liveClock = null, liveClockTimer = null; // v2.22 : chrono qui avance entre les relevés
             let liveFirstPoll = true, livePrev = null, liveFilter = 'all', liveErrCount = 0, liveTitleTimer = null, livePunchBusy = false, liveDetectTried = false;
-            let liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false };
+            let liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false, maxTemps: 0, perEnded: new Set() };
             let liveFastUntil = 0; // v2.18 : poll rapide (5 s) jusqu'à cette échéance quand une action vient d'être détectée
             let liveLastPoll = 0, liveChecking = false; // v2.18 : anti-chevauchement de relevés + rythme adaptatif
             let liveFollowTeam = ''; // v2.18 : équipe suivie en direct (vide = les Lynx de Valence)
@@ -8056,6 +8057,8 @@ ${cards}
                     id: ev.id, type: ev.type,
                     time: liveMmss(ev.temps != null ? ev.temps : 0),
                     temps: ev.temps || 0,
+                    // v2.22 : sortie/retour de gardien — un REMPLACANT dont l'entrant ou le sortant n'est pas gardien
+                    gk: ev.type === 'REMPLACANT' ? (() => { const isGk = (p) => { const pp = p && p.position; return !!pp && (pp.code === 'GB' || /gardien/i.test(String(pp.libelle || ''))); }; const o = ev.sortant, i2 = ev.entrant; if (isGk(o) && !isGk(i2)) return 'out'; if (isGk(i2) && !isGk(o)) return 'in'; return null; })() : null,
                     team: ev.equipe ? (ev.equipe.libelle_court || ev.equipe.libelle || '') : '',
                     teamId: ev.equipe ? ev.equipe.id : null,
                     detail: liveEvtDetail(ev),
@@ -8063,6 +8066,11 @@ ${cards}
                     sitRaw: ev.sup_numerique || ev.superiorite || ev.situation || ev.type_but || (ev.surnombre ? String(ev.surnombre.code || '') + ' ' + String(ev.surnombre.libelle || '') : null),
                     onIce: Array.isArray(ev.joueurs_plus_ids) ? ev.joueurs_plus_ids.map(pid => partMap[pid]).filter(Boolean) : null
                 }));
+                // v2.22 : la période se déduit des ÉVÉNEMENTS (temps du dernier événement) ET du chrono —
+                // le chrono du flux peut rester à 00:00 ou reculer, les événements sont la vérité terrain.
+                const evtMax = events.reduce((mx, ev) => Math.max(mx, ev.temps || 0), 0);
+                const gkOut = {};
+                events.forEach(ev => { if (ev.type === 'REMPLACANT' && ev.gk) gkOut[ev.teamId] = ev.gk === 'out'; });
                 const isOvertime = ms > 3600000; // chrono > 60 min → prolongation
                 // v2.14 : correction du détecteur de fusillade — les tirs cadrés du match (type TIR) étaient confondus
                 // avec les tirs au but ! Fusillade = clé tirs_aux_but remplie, tentative/but à 65 min+ de chrono,
@@ -8115,7 +8123,7 @@ ${cards}
                 return { homeName: names[home.equipe_id] || 'Domicile', awayName: names[away.equipe_id] || 'Visiteur',
                     homeId: home.equipe_id, awayId: away.equipe_id,
                     homeScore: home.score || 0, awayScore: away.score || 0,
-                    chronoTxt: liveMmss(ms / 1000), period: Math.floor(ms / 1200000) + 1, ms,
+                    chronoTxt: liveMmss(ms / 1000), period: Math.floor(Math.max(ms, evtMax * 1000) / 1200000) + 1, ms, evtMax, gkOut,
                     isOvertime, tab,
                     paused: !!data.est_en_pause, finished: !!data.est_terminee, events, players,
                     competition: data.competition || '', dateRencontre: data.date_rencontre || '',
@@ -8452,7 +8460,9 @@ ${cards}
             }
             function liveAnimGoal(st, ev, catchUp) {
                 const teamName = ev.teamId === st.homeId ? st.homeName : st.awayName;
-                const it = { key: 'goal', dur: 5000, html: liveAnimCard({ grad: 'linear-gradient(135deg,#D90429,#ff8a5c)', kicker: 'But ' + xmlEsc(teamName) + ' — ' + ev.time, title: 'BUUUT ! 🏒', sub: xmlEsc((ev.detail || '') + (ev.sit === 'SUP' ? ' — 🔫 en supériorité numérique' : ev.sit === 'INF' ? ' — 🛡️ but en infériorité !' : '')), logo: getLogo(teamName), photo: playerPhotoOf(ev.detail), score: catchUp ? liveScoreAt(st, ev.temps || 0) : st.homeScore + ' - ' + st.awayScore, scoreSub: xmlEsc(st.homeName + ' - ' + st.awayName), catchUp }) };
+                // v2.22 : code couleur — but de l'équipe suivie en rouge, but adverse en bleu
+                const mine = liveIsMyTeam(teamName);
+                const it = { key: 'goal', dur: 5000, html: liveAnimCard({ grad: mine ? 'linear-gradient(135deg,#D90429,#ff8a5c)' : 'linear-gradient(135deg,#1e3a8a,#60a5fa)', kicker: 'But ' + xmlEsc(teamName) + ' — ' + ev.time, title: mine ? 'BUUUT ! 🏒' : '😬 BUT ADVERSE', sub: xmlEsc((ev.detail || '') + (ev.sit === 'SUP' ? ' — 🔫 en supériorité numérique' : ev.sit === 'INF' ? ' — 🛡️ but en infériorité !' : '')), logo: getLogo(teamName), photo: playerPhotoOf(ev.detail), score: catchUp ? liveScoreAt(st, ev.temps || 0) : st.homeScore + ' - ' + st.awayScore, scoreSub: xmlEsc(st.homeName + ' - ' + st.awayName), catchUp }) };
                 if (!catchUp) { const tk = liveTakeoverGoal(st, ev); it.takeHtml = tk.takeHtml; it.takeDur = tk.dur; }
                 return it;
             }
@@ -8506,7 +8516,9 @@ ${cards}
                 const it = liveAnimQ.shift();
                 liveAnimBusy = true;
                 if (it.takeHtml && liveAnimEnabled('takeover')) { liveTakeoverShow(it); return; }
+                if (!it.html) { liveAnimBusy = false; liveAnimPump(); return; } // v2.22 : takeover désactivé → on saute l'élément au lieu d'afficher une carte vide
                 const layer = document.getElementById('live-anim-layer');
+                if (!layer) { liveAnimBusy = false; return; } // v2.22 : couche absente → on stoppe net au lieu de vider la file dans le vide
                 if (layer) {
                     layer.innerHTML = '';
                     layer.style.display = '';
@@ -8732,8 +8744,12 @@ ${cards}
                         const ev = it.ev;
                         const isGoal = ev.type === 'BUT';
                         const isPen = ev.type === 'SANCTION';
-                        row.className = 'p-2 rounded-lg flex items-start gap-2 ' + (isGoal ? 'bg-orange-50 dark:bg-orange-900/25' : isPen ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-gray-50 dark:bg-gray-800/50');
-                        row.innerHTML = '<span class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs bg-white dark:bg-gray-700 shadow">' + (icons[ev.type] || 'ℹ️') + '</span><p class="text-xs md:text-sm m-0 leading-snug min-w-0 flex-1"><span class="inline-block font-bold tabular-nums text-gray-400 mr-1">' + ev.time + '</span><span class="' + (isGoal ? 'text-orange-600 dark:text-orange-400 font-black' : isPen ? 'text-yellow-700 dark:text-yellow-400 font-bold' : 'text-gray-600 dark:text-gray-300') + '">' + (labels[ev.type] || xmlEsc(ev.type)) + '</span>' + (ev.team ? ' <span class="text-gray-400 font-semibold">— ' + xmlEsc(ev.team) + '</span>' : '') + (ev.detail ? '<br><span class="text-gray-500 dark:text-gray-400">' + xmlEsc(ev.detail) + '</span>' : '') + (ev.sit ? '<br><span class="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400">' + (ev.sit === 'SUP' ? '🔫 But en supériorité numérique' : '🛡️ But en infériorité !') + '</span>' : '') + (isGoal && ev.onIce && ev.onIce.length ? '<br><span class="text-[10px] text-gray-400">👥 sur la glace : ' + xmlEsc(ev.onIce.join(', ')) + '</span>' : '') + '</p>';
+                        // v2.22 : code couleur suivi/adverse sur les buts (rouge = équipe suivie, bleu = adverse)
+                        const myHome2 = liveIsMyTeam(st.homeName);
+                        const evMine = isGoal && ev.teamId ? (ev.teamId === st.homeId ? myHome2 : !myHome2) : false;
+                        row.className = 'p-2 rounded-lg flex items-start gap-2 ' + (isGoal ? (evMine ? 'bg-red-50 dark:bg-red-900/25' : 'bg-blue-50 dark:bg-blue-900/20') : isPen ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-gray-50 dark:bg-gray-800/50');
+                        const remLbl = ev.type === 'REMPLACANT' ? (ev.gk === 'out' ? '🧤 Gardien sorti (filet vide)' : ev.gk === 'in' ? '🧤 Gardien de retour dans sa cage' : labels[ev.type]) : labels[ev.type];
+                        row.innerHTML = '<span class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs bg-white dark:bg-gray-700 shadow">' + (icons[ev.type] || 'ℹ️') + '</span><p class="text-xs md:text-sm m-0 leading-snug min-w-0 flex-1"><span class="inline-block font-bold tabular-nums text-gray-400 mr-1">' + ev.time + '</span><span class="' + (isGoal ? (evMine ? 'text-red-600 dark:text-red-400 font-black' : 'text-blue-700 dark:text-blue-300 font-black') : isPen ? 'text-yellow-700 dark:text-yellow-400 font-bold' : 'text-gray-600 dark:text-gray-300') + '">' + (remLbl || xmlEsc(ev.type)) + '</span>' + (ev.team ? ' <span class="text-gray-400 font-semibold">— ' + xmlEsc(ev.team) + '</span>' : '') + (ev.detail ? '<br><span class="text-gray-500 dark:text-gray-400">' + xmlEsc(ev.detail) + '</span>' : '') + (ev.sit ? '<br><span class="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400">' + (ev.sit === 'SUP' ? '🔫 But en supériorité numérique' : '🛡️ But en infériorité !') + '</span>' : '') + (isGoal && ev.onIce && ev.onIce.length ? '<br><span class="text-[10px] text-gray-400">👥 sur la glace : ' + xmlEsc(ev.onIce.join(', ')) + '</span>' : '') + '</p>';
                     }
                     box.appendChild(row);
                 });
@@ -8784,7 +8800,7 @@ ${cards}
                     document.getElementById('live-home-name').textContent = st.homeName;
                     document.getElementById('live-away-name').textContent = st.awayName;
                     document.getElementById('live-score').textContent = st.homeScore + ' - ' + st.awayScore;
-                    document.getElementById('live-comp').textContent = (st.competition ? st.competition + ' — ' : '') + st.dateRencontre + (st.journee ? ' — ' + st.journee + 'e journée' : '') + (st.patinoire ? ' — 📍 ' + st.patinoire : '');
+                    document.getElementById('live-comp').textContent = (st.finished ? '🏁 TERMINÉ — ' : '') + (st.competition ? st.competition + ' — ' : '') + st.dateRencontre + (st.journee ? ' — ' + st.journee + 'e journée' : '') + (st.patinoire ? ' — 📍 ' + st.patinoire : '');
                     document.getElementById('live-periods').innerHTML = livePeriodsFrom(st).chips;
                     // v2.14 : compteur de tirs cadrés, séance de fusillade, joueurs du match
                     const shotsEl = document.getElementById('live-shots');
@@ -8815,6 +8831,9 @@ ${cards}
                     const aLogo = document.getElementById('live-away-logo');
                     if (aLogo) { aLogo.src = getLogo(st.awayName); aLogo.alt = st.awayName; aLogo.style.display = ''; aLogo.onerror = () => { aLogo.style.display = 'none'; }; }
                     const chronoEl = document.getElementById('live-chrono');
+                    // v2.22 : le chrono affiché est recalibré sur CHAQUE relevé (le flux peut reculer) puis
+                    // avance en local d'une seconde à l'autre, calé sur les limites de tiers — plus de chrono figé.
+                    liveClock = { ms: st.ms, at: Date.now(), run: !st.paused && !st.finished && !st.tab, ot: st.isOvertime };
                     if (chronoEl) chronoEl.textContent = st.tab ? '—' : st.chronoTxt;
                     const btnSaveLive = document.getElementById('live-save-result');
                     if (btnSaveLive) btnSaveLive.style.display = st.finished ? '' : 'none';
@@ -8823,6 +8842,8 @@ ${cards}
                         st.events.forEach(ev => { liveSeen.events.add(ev.id); if (ev.type === 'BUT') liveSeen.goals.add(ev.id); });
                         liveSeen.wasPaused = st.paused ? livePausePlausible(st) : false;
                         liveSeen.started = st.events.length > 0;
+                        liveSeen.maxTemps = st.evtMax || 0; // v2.22 : les fins de tiers déjà franchies ne seront pas ré-annoncées
+                        liveSeen.perEnded = new Set([1, 2, 3].filter(k => (st.evtMax || 0) >= k * 1200));
                         liveFirstPoll = false;
                         // RATTRAPAGE : on rejoue dans l'ordre tout ce qui s'est passé avant l'ouverture du site
                         const story = [];
@@ -8873,10 +8894,26 @@ ${cards}
                             liveNotify("🥅 C'est parti !", st.homeName + ' - ' + st.awayName, 'live-start');
                             liveEnqueueAnim(liveAnimStart(st));
                         }
+                        // v2.22 : fins de tiers détectées par les ÉVÉNEMENTS — dès que le temps du dernier
+                        // événement franchit 20/40/60 min, le tiers est fini, même si le chrono du flux reste à 00:00.
+                        const curMax = st.evtMax || 0, prevMax = liveSeen.maxTemps || 0;
+                        if (!st.finished && !st.paused) {
+                            for (let k = 1; k <= 3; k++) {
+                                if (prevMax < k * 1200 && curMax >= k * 1200 && !liveSeen.perEnded.has(k)) {
+                                    liveSeen.perEnded.add(k);
+                                    livePlay('periodEnd', true);
+                                    liveNotify('⏸ Fin du tiers-temps ' + k, st.homeName + ' ' + st.homeScore + ' - ' + st.awayScore + ' ' + st.awayName, 'live-per' + k);
+                                    liveEnqueueAnim(liveAnimPeriod(st, k));
+                                }
+                            }
+                        }
+                        if (liveSeen.maxTemps < curMax) liveSeen.maxTemps = curMax;
                         if (liveSeen.wasPaused !== null) {
                             // v2.18 : garde anti-fausses fins de tiers — on ne déclenche que si le chrono est
                             // proche d'une vraie limite (20/40/60 min), sinon le flux peut annoncer « tiers 0 ».
-                            if (liveSeen.wasPaused === false && livePausePlausible(st) && !st.finished) {
+                            const perK = Math.min(3, Math.max(1, Math.round(st.ms / 1200000)));
+                            if (liveSeen.wasPaused === false && livePausePlausible(st) && !st.finished && !liveSeen.perEnded.has(perK)) {
+                                liveSeen.perEnded.add(perK);
                                 livePlay('periodEnd', true);
                                 const finTxt = st.ms >= 3600000 ? 'Fin du temps réglementaire' : 'Fin du tiers-temps ' + Math.min(3, Math.round(st.ms / 1200000));
                                 liveNotify('⏸ ' + finTxt, st.homeName + ' ' + st.homeScore + ' - ' + st.awayScore + ' ' + st.awayName + ' — vas-y, tire-la !', 'live-per');
@@ -8906,7 +8943,9 @@ ${cards}
                     if (livePrev && !livePrev.isOvertime && st.isOvertime && !st.paused && !st.finished && !liveSeen.wasPaused) liveEnqueueAnim(liveAnimProl(st));
                     if (livePrev && !livePrev.tab && st.tab && !st.finished && !liveSeen.wasPaused) liveEnqueueAnim(liveAnimTab(st));
                     const live = st.finished ? '🏁 Match terminé' : st.paused ? (livePausePlausible(st) ? (st.ms >= 3600000 ? '⏸ Fin du temps réglementaire' : '⏸ Pause — fin du tiers-temps ' + Math.min(3, Math.round(st.ms / 1200000))) : '⏸ Pause (chrono indisponible)') : st.tab ? '⚔️ TIRS AU BUT en cours' : st.isOvertime ? '🔴 PROLONGATION — chrono ' + st.chronoTxt : '🔴 T' + Math.min(st.period, 3) + ' en cours — chrono ' + st.chronoTxt;
-                    document.getElementById('live-status-line').textContent = live + ' — ' + new Date().toLocaleTimeString();
+                    // v2.22 : gardien sorti (filet vide) signalé dans la ligne d'état
+                    const gkOutSide = (st.gkOut && st.gkOut[st.homeId]) ? st.homeName : ((st.gkOut && st.gkOut[st.awayId]) ? st.awayName : null);
+                    document.getElementById('live-status-line').textContent = live + (gkOutSide ? ' — 🥅 Gardien de ' + xmlEsc(gkOutSide) + ' sorti !' : '') + ' — ' + new Date().toLocaleTimeString();
                     liveRender(st);
                     livePrev = st;
                     liveChecking = false;
@@ -8941,9 +8980,12 @@ ${cards}
             }
             // v2.18 : Revivre un match — bouton de rejeu d'un rapport archivé
             const repBtn = document.getElementById('live-replay-btn');
-            if (repBtn) repBtn.onclick = () => {
+            if (repBtn) repBtn.onclick = async () => {
                 const sel = document.getElementById('live-replay-select');
-                const reps = window._liveReplayReps || [];
+                let reps = window._liveReplayReps || [];
+                // v2.22 : la liste est maintenant rafraîchie à la volée — un match enregistré en direct
+                // est rejouable immédiatement, sans recharger la page
+                if (!reps.length || (sel && !sel.options.length)) { await populateLiveReplay(); reps = window._liveReplayReps || []; }
                 const r = sel && reps[Number(sel.value)];
                 if (!r) { appAlert("Choisis d'abord un match dans la liste."); return; }
                 replayMatchReport(r);
@@ -8979,7 +9021,7 @@ ${cards}
                 const stl = document.getElementById('live-status-line');
                 if (stl && liveWakeOn) stl.textContent = '☀️ Mode patinoire : l\'écran restera allumé pendant que la page est ouverte' + (navigator.wakeLock ? '' : ' — non pris en charge par ce navigateur');
             };
-            document.addEventListener('visibilitychange', liveWakeApply);
+            document.addEventListener('visibilitychange', () => { liveWakeApply(); if (document.visibilityState === 'visible' && liveTimer && Date.now() - liveLastPoll > 15000) { try { liveCheck(); } catch (e) {} } }); // v2.22 : relevé immédiat au retour sur l'app — la fin de match est visible tout de suite
             liveWakeApply();
             document.getElementById('live-btn-start').onclick = async () => {
                 const id = liveMatchNum(document.getElementById('live-match-url').value);
@@ -8994,6 +9036,16 @@ ${cards}
                 document.getElementById('live-status-line').textContent = '⏳ Premier relevé en cours...';
                 liveConnectWs(id);
                 liveCheck();
+                // v2.22 : chrono local — avance d'une seconde à l'autre entre les relevés, recalibré à chaque poll,
+                // plafonné à la fin du tiers en cours (le chrono du flux peut rester bloqué ou reculer).
+                if (liveClockTimer) clearInterval(liveClockTimer);
+                liveClockTimer = setInterval(() => {
+                    const el = document.getElementById('live-chrono');
+                    if (!el || !liveClock || !liveClock.run) return;
+                    let msC = liveClock.ms + (Date.now() - liveClock.at);
+                    if (!liveClock.ot) { const per = Math.floor(liveClock.ms / 1200000); msC = Math.min(msC, Math.min(3, per + 1) * 1200000); }
+                    el.textContent = liveMmss(msC / 1000);
+                }, 1000);
                 // v2.18 : poll adaptatif — horloge de 5 s : au repos un relevé toutes les 20 s, mais toutes
                 // les 5 s pendant 90 s après une action (tir cadré → rebond probable) : le but suit le tir de près.
                 liveTimer = setInterval(() => { if (document.visibilityState !== 'visible') return; if (Date.now() < liveFastUntil || Date.now() - liveLastPoll >= 20000) liveCheck(); }, 5000);
@@ -9001,6 +9053,7 @@ ${cards}
             document.getElementById('live-btn-stop').onclick = () => {
                 if (livePrev && livePrev.events && livePrev.events.length) liveSaveReport(livePrev); // on archive ce qu'on a vu même si le match n'est pas fini
                 clearInterval(liveTimer); liveTimer = null;
+                if (liveClockTimer) { clearInterval(liveClockTimer); liveClockTimer = null; } liveClock = null; // v2.22
                 if (liveWs) { try { liveWs.close(); } catch (err) {} liveWs = null; }
                 document.getElementById('live-btn-start').style.display = '';
                 document.getElementById('live-btn-stop').style.display = 'none';
@@ -9011,14 +9064,27 @@ ${cards}
                 if(!adminCanEdit()) { appAlert('🔒 Enregistrement du résultat réservé à l\'Admin — déverrouille l\'Admin.'); return; }
                 const st = livePrev;
                 if (!st || !st.finished) { appAlert('Le match doit être terminé pour enregistrer le résultat.'); return; }
+                const btnSaveL = document.getElementById('live-save-result');
+                if (btnSaveL && btnSaveL.dataset.busy === '1') return; // v2.22 : anti double-clic
+                if (btnSaveL) { btnSaveL.dataset.busy = '1'; btnSaveL.disabled = true; }
                 try {
                     const { dIso, id } = liveResultId(st);
-                    const m = { date: dIso, season: activeSeason, poule: 'B', homeTeam: st.homeName, awayTeam: st.awayName, scoreHome: st.homeScore, scoreAway: st.awayScore, isProl: liveHadOvertime(st), type: 'Saison' };
-                    await setDoc(doc(db, `${basePath}/calendar/${id}`), m, { merge: true });
+                    // v2.22 : ANTI-DOUBLON — si le match existe déjà au calendrier (mêmes équipes à ±3 jours),
+                    // on MET À JOUR ce match au lieu d'en créer un nouveau (les noms du flux diffèrent souvent du calendrier).
+                    const sameName = (x, y) => { const nx = normalize(x || ''), ny = normalize(y || ''); return !!(nx && ny && (nx === ny || nx.includes(ny) || ny.includes(nx))); };
+                    const exist = (allMatches || []).find(m => m && m.season === activeSeason &&
+                        (((sameName(m.homeTeam, st.homeName) && sameName(m.awayTeam, st.awayName)) || (sameName(m.homeTeam, st.awayName) && sameName(m.awayTeam, st.homeName)))) &&
+                        m.date && Math.abs(new Date(m.date).getTime() - new Date(dIso).getTime()) <= 3 * 864e5);
+                    const m = exist
+                        ? { scoreHome: st.homeScore, scoreAway: st.awayScore, isProl: liveHadOvertime(st) }
+                        : { date: dIso, season: activeSeason, poule: 'B', homeTeam: st.homeName, awayTeam: st.awayName, scoreHome: st.homeScore, scoreAway: st.awayScore, isProl: liveHadOvertime(st), type: 'Saison' };
+                    await setDoc(doc(db, `${basePath}/calendar/${exist ? exist.id : id}`), m, { merge: true });
                     await liveSaveReport(st); // même identifiant → le rapport live est rattaché au match du calendrier
-                    appAlert('✅ Résultat enregistré dans le calendrier ! Article publié dès que les données sont complètes (stats joueurs), au plus tard 48h.');
+                    appAlert(exist ? '✅ Résultat enregistré : le match EXISTANT du calendrier a été mis à jour (aucun doublon créé).' : '✅ Résultat enregistré dans le calendrier ! Article publié dès que les données sont complètes (stats joueurs), au plus tard 48h.');
                     lastResultCheck = 0; setTimeout(() => { try { autoResultCheck(); } catch(e) { console.warn('article auto live', e); } }, 6000);
+                    populateLiveReplay(); // v2.22 : la liste « Revivre un match » est rafraîchie tout de suite
                 } catch (e) { console.warn('save live result', e); appAlert('Enregistrement impossible : ' + (e && e.message ? e.message : 'erreur')); }
+                finally { if (btnSaveL) { btnSaveL.dataset.busy = '0'; btnSaveL.disabled = false; } }
             };
             // v2.18 : réparation d'un rapport live (inversion domicile/extérieur du flux, « ap » erroné)
             const btnFixRepSwap = document.getElementById('btn-fixrep-swap');
