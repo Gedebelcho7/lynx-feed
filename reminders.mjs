@@ -960,6 +960,54 @@ async function liveDetectToday() {
   }
   return "";
 }
+// v2.22 : cache FFHG en base — à chaque cycle complet, l'action récupère les lignes de la saison
+// (numéros de rencontre, horaires, scores, drapeau « en cours ») et les écrit dans settings/ffhg-rows
+// (JSON en chaîne, un seul doc). Le site lit ce cache EN PREMIER (lecture Firestore : zéro relais CORS,
+// zéro proxy) et ne passe par les relais qu'en secours — résultats, scan des n° et détection live marchent
+// même quand les proxys publics meurent.
+async function ffhgCacheRefresh() {
+  const rows = [];
+  for (const d of FFHG_DIVS) {
+    const before = rows.length;
+    for (let page = 1; page <= 8; page++) {
+      let j = null;
+      try {
+        const url = "https://www.hockeyfrance.com/competitions/wp-admin/admin-ajax.php?action=get_rencontres&page=" + page + "&equipe_id=&competition_id=" + d.comp + "&phase_id=" + d.phase + "&date_min=&date_max=&par_page=50&journee=&limite=0";
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 15000);
+        try {
+          const r = await fetch(url, { headers: { "User-Agent": "LynxBot/1.0" }, signal: ctrl.signal });
+          if (!r.ok) break;
+          j = JSON.parse(await r.text());
+        } finally { clearTimeout(to); }
+      } catch (e) { break; }
+      const arr = (j && j.data && Array.isArray(j.data.data)) ? j.data.data : [];
+      for (const r of arr) {
+        const rec = r.receveur, vis = r.visiteur;
+        const dt = (r.calendrier && (r.calendrier.date_debut || r.calendrier.date_fin)) || r.date_rencontre || "";
+        if (!rec || !vis || !dt) continue;
+        let gh = null, ga = null;
+        if (Array.isArray(r.score)) {
+          for (const s of r.score) {
+            if (s && s.equipe_id === rec.id) gh = Number(s.score);
+            else if (s && s.equipe_id === vis.id) ga = Number(s.score);
+          }
+        }
+        rows.push({ div: d.div, id: String(r.id), date: dt.replace(" ", "T"), home: rec.libelle_court || rec.libelle || "", away: vis.libelle_court || vis.libelle || "", homeFull: rec.libelle_complet || "", awayFull: vis.libelle_complet || "", gh, ga, vp: r.victoire_par || "", live: !!r.en_cours, done: r.etat === "T" });
+      }
+      const meta = (j && j.data && j.data.meta) || {};
+      const per = Number(meta.per_page) || 50;
+      const tot = Number(meta.total) || 0;
+      if (!arr.length || arr.length < per || (rows.length - before) >= tot) break;
+    }
+  }
+  if (!rows.length) { console.log("Cache FFHG : flux injoignable, cache en base non modifié."); return 0; }
+  try {
+    await patchDoc("settings", "ffhg-rows", { rows: JSON.stringify(rows), at: Date.now() });
+    console.log(`Cache FFHG écrit en base : ${rows.length} ligne(s) (settings/ffhg-rows).`);
+    return rows.length;
+  } catch (e) { console.warn("Cache FFHG : écriture impossible — " + (e && e.message ? e.message : e)); return 0; }
+}
 // Le flux FFHG contient parfois PLUSIEURS clés "evenements" (doublons PHP) :
 // JSON.parse ne garde que la dernière → on extrait toutes les listes du texte brut.
 function liveExtractEvents(raw) {
@@ -1349,6 +1397,7 @@ async function main() {
     console.log(`Actus externes : ${collect.fresh.length} article(s) synchronisé(s) dans l'app${collect.newItems.length ? " dont " + collect.newItems.length + " nouveau(x)" : ""}.${collect.failed.length ? " Flux en échec : " + collect.failed.join(", ") : ""}`);
     try { await actusPush(collect.newItems, subs); } catch (e) { console.warn("Push actus presse : " + (e && e.message ? e.message : e)); }
     try { tkt = await ticketCheck(subs); } catch (e) { console.warn("Billetterie : " + (e && e.message ? e.message : e)); }
+    try { await ffhgCacheRefresh(); } catch (e) { console.warn("Cache FFHG : " + (e && e.message ? e.message : e)); }
   }
 
   // 3) ITEMS AUTO (templates sans IA)
