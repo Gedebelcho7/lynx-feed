@@ -1225,6 +1225,7 @@
                         <button id="btn-restore-backup" class="py-2 px-2 bg-green-700 hover:bg-green-800 text-white rounded font-bold text-xs" title="Recrée depuis la sauvegarde mensuelle (dépôt lynx-feed) tout document disparu : calendrier, effectifs, classements, rapports live. Rien d'existant n'est modifié.">♻️ Restaurer sauvegarde</button>
                         <button id="btn-dedupe-calendar" class="py-2 px-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded font-bold text-xs" title="Supprime les matchs en double (même jour, mêmes équipes, casse différente — ou mêmes équipes à quelques jours d'écart avec le même score)">🧹 Dédoublonner Matchs</button>
                         <button id="btn-ffhg-sync" class="py-2 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-xs" title="Récupère les résultats, horaires et prolongations depuis hockeyfrance.com (saison en cours, sans écraser les scores saisis) et archive les déroulés récents (buteurs, pénalités, MVP)">🔄 Résultats FFHG</button>
+                        <button id="btn-ffhg-scan" class="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold text-xs" title="Relie chaque match du calendrier de la saison à son numéro officiel FFHG (équipes + date). Une fois reliés, les résultats et le direct s'appuient sur ces numéros : plus de recherche par noms, détection instantanée.">🔗 Scanner les n° FFHG</button>
                     </div>
                  </div>
             </div>
@@ -2266,8 +2267,23 @@
             { div: 'D2', comp: 198, phase: 567 }
         ];
         let ffhgSeasonCache = { at: 0, rows: [] };
+        let ffhgRowsWrittenAt = 0;
+        // v2.22 : cache en base (settings/ffhg-rows, écrit par l'action GitHub à chaque cycle complet ET par l'app
+        // après une récupération relais réussie) — lecture Firestore = zéro relais CORS, ça marche même quand les proxys meurent.
+        async function ffhgRowsFromBase() {
+            try {
+                const d = await getDoc(doc(db, `${basePath}/settings/ffhg-rows`));
+                if (!d || !d.exists || !d.exists()) return null;
+                const v = d.data() || {};
+                if (!v.rows || Date.now() - (Number(v.at) || 0) > 6 * 3600e3) return null;
+                const arr = JSON.parse(v.rows);
+                return Array.isArray(arr) && arr.length ? arr : null;
+            } catch (e) { return null; }
+        }
         async function ffhgSeasonRows() {
             if (ffhgSeasonCache.rows.length && Date.now() - ffhgSeasonCache.at < 1800e3) return ffhgSeasonCache.rows;
+            const fromBase = await ffhgRowsFromBase();
+            if (fromBase) { ffhgSeasonCache = { at: Date.now(), rows: fromBase }; return fromBase; }
             const rows = [];
             for (const d of FFHG_DIVS) {
                 const before = rows.length;
@@ -2299,7 +2315,15 @@
                     if (!arr.length || arr.length < per || (rows.length - before) >= tot) break;
                 }
             }
-            if (rows.length) ffhgSeasonCache = { at: Date.now(), rows };
+            if (rows.length) {
+                ffhgSeasonCache = { at: Date.now(), rows };
+                // v2.22 : l'app alimente elle aussi le cache en base (1 écriture/h max) — le prochain chargement
+                // et les autres appareils liront la base au lieu de passer par les relais.
+                if (Date.now() - ffhgRowsWrittenAt > 3600e3) {
+                    ffhgRowsWrittenAt = Date.now();
+                    try { await setDoc(doc(db, `${basePath}/settings/ffhg-rows`), { rows: JSON.stringify(rows), at: Date.now() }, { merge: true }); } catch (e) {}
+                }
+            }
             return rows;
         }
         async function fetchDayLiveScores(dayM) {
@@ -7672,6 +7696,51 @@ ${cards}
                     try { await ffhgSyncResults({}); } finally { btnFfhgSync.disabled = false; }
                 });
             };
+            // v2.22 : scan des n° de rencontre FFHG — relie chaque match du calendrier de la saison à son numéro officiel.
+            // Une fois relié, un match est retrouvé à coup sûr (résultats, direct, archivage) sans recherche par noms.
+            async function ffhgScanIds() {
+                const rows = await ffhgSeasonRows();
+                if (!rows.length) throw new Error('flux FFHG injoignable (ni le cache en base, ni les relais)');
+                const nm = s => normalize(s || '');
+                const pair = (x, y) => !!(x && y && (x.includes(y) || y.includes(x)));
+                const cands = (allMatches || []).filter(m => m && m.season === activeSeason && (!m.type || m.type === 'Saison') && m.homeTeam && m.awayTeam);
+                let attached = 0, known = 0;
+                const missed = [];
+                for (const m of cands) {
+                    if (m.ffhgId) { known++; continue; }
+                    if (/^ffhg-(\d+)$/.test(String(m.id))) { // match recréé par la synchro : le n° est déjà dans l'identifiant
+                        const nid = m.id.slice(5);
+                        try { await setDoc(doc(db, `${basePath}/calendar/${m.id}`), { ffhgId: nid }, { merge: true }); } catch (e) {}
+                        m.ffhgId = nid; known++; continue;
+                    }
+                    const md = new Date(m.date).getTime();
+                    const mh = nm(m.homeTeam), ma = nm(m.awayTeam);
+                    const hit = rows.find(r => {
+                        const rd = new Date(r.date).getTime();
+                        if (!isFinite(rd) || !isFinite(md) || Math.abs(rd - md) > 2 * 864e5) return false;
+                        const direct = (pair(mh, nm(r.home)) || pair(mh, nm(r.homeFull))) && (pair(ma, nm(r.away)) || pair(ma, nm(r.awayFull)));
+                        const swap = (pair(mh, nm(r.away)) || pair(mh, nm(r.awayFull))) && (pair(ma, nm(r.home)) || pair(ma, nm(r.homeFull)));
+                        return direct || swap;
+                    });
+                    if (hit) {
+                        try { await setDoc(doc(db, `${basePath}/calendar/${m.id}`), { ffhgId: hit.id }, { merge: true }); } catch (e) {}
+                        m.ffhgId = hit.id; attached++;
+                    } else if (missed.length < 12) missed.push(m.homeTeam + ' – ' + m.awayTeam + ' (' + new Date(m.date).toLocaleDateString('fr-FR') + ')');
+                }
+                return { total: cands.length, attached, known, missed };
+            }
+            const btnFfhgScan = document.getElementById('btn-ffhg-scan');
+            if (btnFfhgScan) btnFfhgScan.onclick = () => {
+                if (!adminCanEdit()) { appAlert('🔒 Réservé à l\'Admin déverrouillé.'); return; }
+                appConfirm('Scanner les n° de match FFHG maintenant ?\n\nRelie chaque match du calendrier de la saison en cours à son numéro officiel FFHG (équipes + date à ±2 jours). Rien n\'est supprimé ni re-noté — seuls les n° sont mémorisés. À faire une fois par saison (ou après un nouvel import de calendrier).', async () => {
+                    btnFfhgScan.disabled = true;
+                    try {
+                        const res = await ffhgScanIds();
+                        appAlert('🔗 Scan terminé.\n\n✅ ' + res.attached + ' n° nouvellement attaché(s)\n🔗 ' + res.known + ' match(s) déjà relié(s)\n📋 ' + res.total + ' match(s) de la saison en cours' + (res.missed.length ? '\n\n⚠️ Sans correspondance dans le flux FFHG (' + res.missed.length + ' au total, vérifier équipes/date) :\n' + res.missed.join('\n') : '\n\nTous les matchs sont reliés — résultats et direct passeront par ces numéros.'));
+                    } catch (e) { appAlert('❌ Scan impossible : ' + (e && e.message ? e.message : 'erreur') + '\n\nLe flux FFHG est peut-être momentanément indisponible — réessaie plus tard.'); }
+                    finally { btnFfhgScan.disabled = false; }
+                });
+            };
 
             // --- EXPORTS (Now filtered by Active Season) ---
             const getActiveRows = (data) => data.filter(d => d.season === activeSeason);
@@ -8138,8 +8207,7 @@ ${cards}
                 { name: 'jina', build: u => 'https://r.jina.ai/' + u, parse: t => { const i = t.indexOf('{'); return i > 0 ? t.slice(i) : t; } },
                 { name: 'allorigins', build: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
                 { name: 'allorigins-get', build: u => 'https://api.allorigins.win/get?url=' + encodeURIComponent(u), parse: t => { try { return JSON.parse(t).contents || ''; } catch (err) { return t; } } },
-                { name: 'codetabs', build: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u) },
-                { name: 'corsproxy', build: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u) }
+                { name: 'codetabs', build: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u) }
             ];
             async function liveFetchText(url) {
                 const bust = url + '&_cb=' + Date.now();
@@ -8503,7 +8571,23 @@ ${cards}
                 const inp = document.getElementById('live-match-url');
                 if (btn) { btn.disabled = true; btn.innerHTML = '🔍 Recherche…'; }
                 let found = null, lastErr = null, foundWhen = '';
+                // v2.22 : priorité au calendrier — un match avec n° FFHG attaché se trouve SANS aucun appel réseau.
+                const hhmm = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
                 try {
+                    const nowT = Date.now();
+                    const mineC = (allMatches || []).filter(m => m && m.season === activeSeason && m.ffhgId && (!m.type || m.type === 'Saison') && (liveIsMyTeam(m.homeTeam) || liveIsMyTeam(m.awayTeam)))
+                        .map(m => ({ m, t: new Date(m.date).getTime() })).filter(x => isFinite(x.t)).sort((a, b) => a.t - b.t);
+                    const curC = mineC.find(x => x.t <= nowT && nowT < x.t + 3.5 * 3600e3); // coup d'envoi → +3h30 : en cours probable
+                    const d0C = new Date(); d0C.setHours(0, 0, 0, 0);
+                    const todayC = mineC.find(x => x.t >= d0C.getTime() && x.t < d0C.getTime() + 24 * 3600e3);
+                    const nextC = mineC.find(x => x.t > nowT);
+                    const pick = curC || todayC || nextC;
+                    if (pick) {
+                        found = String(pick.m.ffhgId);
+                        foundWhen = curC ? 'EN COURS (probable)' : (todayC ? 'aujourd\'hui à ' + hhmm(pick.t) : 'le ' + new Date(pick.t).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' à ' + hhmm(pick.t) + ' (' + (pick.m.homeTeam || '') + ' – ' + (pick.m.awayTeam || '') + ')');
+                    }
+                } catch (e) {}
+                if (!found) try {
                     const rows = await ffhgSeasonRows();
                     if (!rows.length) lastErr = new Error('vide');
                     const d0 = new Date(); d0.setHours(0, 0, 0, 0);
@@ -9370,16 +9454,25 @@ ${cards}
                         if (r.gh == null || r.ga == null || !r.done) continue;
                         const rd = new Date(r.date).getTime();
                         if (!isFinite(rd) || rd > now + 864e5 || rd < now - 120 * 864e5) continue; // garde-fou saisons : la saison en cours seulement
-                        const cand = (allMatches || []).filter(m => m && m.season === activeSeason && (!m.type || m.type === 'Saison') && m.homeTeam && m.awayTeam
-                            && ((sameName(m.homeTeam, r.home) && sameName(m.awayTeam, r.away)) || (sameName(m.homeTeam, r.away) && sameName(m.awayTeam, r.home))))
-                            .sort((a, b) => Math.abs(new Date(a.date).getTime() - rd) - Math.abs(new Date(b.date).getTime() - rd))[0];
+                        // v2.22 : appariement d'abord par n° FFHG stocké sur le match (exact, sans ambiguïté de noms),
+                        // puis repli sur les noms + date ; chaque correspondance trouvée mémorise son n° pour la fois suivante.
+                        let cand = (allMatches || []).find(m => m && m.season === activeSeason && String(m.ffhgId || '') === String(r.id));
+                        if (!cand) {
+                            cand = (allMatches || []).filter(m => m && m.season === activeSeason && (!m.type || m.type === 'Saison') && m.homeTeam && m.awayTeam
+                                && ((sameName(m.homeTeam, r.home) && sameName(m.awayTeam, r.away)) || (sameName(m.homeTeam, r.away) && sameName(m.awayTeam, r.home))))
+                                .sort((a, b) => Math.abs(new Date(a.date).getTime() - rd) - Math.abs(new Date(b.date).getTime() - rd))[0];
+                            if (cand && !cand.ffhgId) {
+                                try { await setDoc(doc(db, `${basePath}/calendar/${cand.id}`), { ffhgId: r.id }, { merge: true }); } catch (e) {}
+                                cand.ffhgId = r.id;
+                            }
+                        }
                         if (!cand || Math.abs(new Date(cand.date).getTime() - rd) > 7 * 864e5) {
                             // v2.22 : match absent du calendrier (import incomplet, effacement…) → recréé depuis le flux officiel,
                             // avec un id DÉTERMINISTE (ffhg-<n° rencontre>) : relancer ne crée jamais de doublon. D1 uniquement.
                             if (r.div === 'D1' && r.id) {
                                 const nid = 'ffhg-' + r.id;
                                 try {
-                                    await setDoc(doc(db, `${basePath}/calendar/${nid}`), { season: activeSeason, type: 'Saison', homeTeam: r.homeFull || r.home, awayTeam: r.awayFull || r.away, date: new Date(r.date).toISOString(), scoreHome: r.gh, scoreAway: r.ga, isProl: r.vp === 'PRL' || r.vp === 'TAB', venue: '', note: '' });
+                                    await setDoc(doc(db, `${basePath}/calendar/${nid}`), { season: activeSeason, type: 'Saison', homeTeam: r.homeFull || r.home, awayTeam: r.awayFull || r.away, date: new Date(r.date).toISOString(), scoreHome: r.gh, scoreAway: r.ga, isProl: r.vp === 'PRL' || r.vp === 'TAB', venue: '', note: '', ffhgId: r.id });
                                     out.created++;
                                 } catch (e) {}
                             }
