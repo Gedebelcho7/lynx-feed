@@ -1022,6 +1022,10 @@
                         <label class="text-[10px] font-bold uppercase text-gray-500">Note</label>
                         <input type="text" id="qs-note" class="w-full p-2 text-base border rounded-lg dark:bg-gray-700 text-red-500 font-bold" placeholder="...">
                     </div>
+                     <div>
+                        <label class="text-[10px] font-bold uppercase text-gray-500" title="Numéro officiel de la rencontre FFHG — celui dans l'URL hockeyfrance.com/competitions/rencontre/82062/. Utilisé par le direct et la synchro des résultats. Modifiable ou à remplir ici si le scan ne l'a pas trouvé.">N° FFHG</label>
+                        <input type="text" id="qs-ffhg" class="w-full p-2 text-base border rounded-lg dark:bg-gray-700 font-mono" placeholder="ex : 82062 (ou URL de la rencontre)">
+                    </div>
                 </div>
                 <!-- Score -->
                 <div class="flex items-center justify-center gap-6 border-t dark:border-gray-700 pt-6">
@@ -1345,7 +1349,7 @@
             <div id="tab-context" class="admin-tab-content space-y-4"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-2">Contexte IA</h3><form id="admin-context-form" class="space-y-3 border-b dark:border-gray-700 pb-4 mb-4"><input id="context-title" class="w-full p-2 border rounded dark:bg-gray-700 text-sm font-bold" placeholder="Titre" required><textarea id="context-content" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-32" placeholder="Info pour l'IA..." required></textarea><button type="submit" class="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded font-bold text-sm">Ajouter</button></form><div id="admin-context-list" class="space-y-2 max-h-60 overflow-y-auto mb-4"></div><div class="pt-4 border-t dark:border-gray-700"><input type="file" id="csv-upload-context" class="border p-2 w-full text-sm bg-white dark:bg-gray-700 rounded"><button id="btn-upload-csv-context" class="btn-primary mt-2 text-sm w-full">Importer Contexte</button><div id="status-context" class="text-xs text-gray-500 mt-1"></div></div></div></div>
             <div id="tab-config" class="admin-tab-content"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-4"><h3 class="font-bold mb-2">Liens Utiles</h3><div id="admin-links-list" class="space-y-2 mb-4"></div><form id="form-add-link" class="flex gap-2 items-end border-t pt-4 dark:border-gray-700 mb-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">Nom</label><input id="link-name" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700" required></div><div class="flex-1"><label class="text-xs font-bold text-gray-500">URL</label><input id="link-url" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700" required></div><button type="submit" class="btn-primary py-2 px-4 rounded text-sm font-bold">Ajouter</button></form><div class="pt-4 border-t dark:border-gray-700"><input type="file" id="csv-upload-links" class="border p-2 w-full text-sm bg-white dark:bg-gray-700 rounded"><button id="btn-upload-csv-links" class="btn-primary mt-2 text-sm w-full">Importer Liens</button><div id="status-links" class="text-xs text-gray-500 mt-1"></div></div></div></div>
             <div id="tab-export" class="admin-tab-content space-y-4">
-                <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-2">Exporter (Saison Active)</h3><div class="flex flex-col gap-2"><button id="btn-export-calendar" class="btn-primary py-2 text-sm w-full">Export Calendrier</button><button id="btn-export-roster" class="btn-primary py-2 text-sm w-full">Export Joueurs</button><button id="btn-export-goalies" class="btn-primary py-2 text-sm w-full bg-blue-600">Export Gardiens (CSV Complet)</button><button id="btn-export-league" class="btn-primary py-2 text-sm w-full">Export Top Ligue</button><button id="btn-export-links" class="btn-primary py-2 text-sm w-full">Export Liens</button><button id="btn-export-context" class="btn-primary py-2 text-sm w-full bg-purple-600">Export Contexte IA</button><button id="btn-export-league-goalies" class="btn-primary py-2 text-sm w-full bg-blue-700">Export Top Gardiens Ligue</button><button id="btn-export-ranking" class="btn-primary py-2 text-sm w-full bg-emerald-600">Export Classement</button></div></div>
+                <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-2">Exporter (Saison Active)</h3><div class="flex flex-col gap-2"><button id="btn-export-calendar" class="btn-primary py-2 text-sm w-full">Export Calendrier</button><button id="btn-export-roster" class="btn-primary py-2 text-sm w-full">Export Joueurs</button><button id="btn-export-goalies" class="btn-primary py-2 text-sm w-full bg-blue-600">Export Gardiens (CSV Complet)</button><button id="btn-export-league" class="btn-primary py-2 text-sm w-full">Export Top Ligue</button><button id="btn-export-links" class="btn-primary py-2 text-sm w-full">Export Liens</button><button id="btn-export-context" class="btn-primary py-2 text-sm w-full bg-purple-600">Export Contexte IA</button><button id="btn-export-league-goalies" class="btn-primary py-2 text-sm w-full bg-blue-700">Export Top Gardiens Ligue</button><button id="btn-export-ranking" class="btn-primary py-2 text-sm w-full bg-emerald-600">Export Classement</button><button id="btn-export-all" class="py-2 text-sm w-full bg-gray-900 hover:bg-black text-white font-bold rounded">📦 Export complet (JSON — tout, toutes saisons)</button><details class="mt-1 text-xs text-gray-500 dark:text-gray-400"><summary class="cursor-pointer font-bold">Format des fichiers exportés</summary><div class="mt-2 space-y-1.5 leading-relaxed"><p><strong>📦 Export complet (JSON)</strong> : un fichier unique avec toutes les collections (calendrier, effectif, gardiens, classement, tops ligue, articles, contexte, rapports live, scouting, presse), toutes saisons — c'est le format de sauvegarde/restauration. Les CSV ci-dessous, eux, ne portent que la saison active.</p><p><strong>calendrier_…csv</strong> : date (jj/mm/aaaa), saison, poule, domicile, exterieur, scoredom, scoreext (vides si non joué), prol (TRUE/FALSE), type, note.</p><p><strong>effectif_…csv</strong> : saison, nom, numero, position, buts, assist, penalite.</p><p><strong>gardiens_…csv</strong> : RG, Nom, MJ, MJE (matchs joués), Min (minutes), V, DPrl (défaite en prolong.), D, Blan (blanchissages), BC (buts encaissés), Moy (moyenne, virgule décimale), puis arrêts et % d'arrêts.</p><p><strong>top_joueurs_ligue_…csv</strong> : saison, nom, equipe, pts, buts, assists, mj.</p><p><strong>classement_…csv</strong> : Rg, Équipe, Poule, MJ, V, Vp (victoire prolong.), Dp (défaite prolong.), D, Pts, BP, BC, Diff, Forme, Saison.</p><p><strong>liens / contexte IA</strong> : tels quels (nom, url — et texte pour le contexte), ré-importables tels quels.</p></div></details></div></div>
                 <!-- NEW EXPORTS FOR GLOSSARY -->
                 <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-purple-200 dark:border-purple-900/50">
                     <h3 class="font-bold mb-2 text-purple-600">Exports Lexique & Règles</h3>
@@ -2613,6 +2617,7 @@
                         </div>
                         <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
                             <button class="open-h2h bg-white/15 hover:bg-white/25 border border-white/25 text-white font-bold text-xs md:text-sm px-4 py-2 rounded-lg transition" data-home="${xmlEsc(m.homeTeam)}" data-away="${xmlEsc(m.awayTeam)}">Face-à-Face</button>
+                            <button id="matchday-live" class="bg-white text-red-700 font-black text-xs md:text-sm px-4 py-2 rounded-lg shadow hover:scale-105 transition" title="Ouvre le direct avec le n° du match déjà rempli — choisis l'équipe suivie en un clic">🔴 Suivre en direct</button>
                             <button id="matchday-ia" class="bg-white/15 hover:bg-white/25 border border-white/25 text-white font-bold text-xs md:text-sm px-4 py-2 rounded-lg transition"><i class="fa-solid fa-robot mr-1 text-red-300"></i>Analyse IA du match</button>
                             <a href="https://www.hockeyfrance.tv/" target="_blank" rel="noopener" class="bg-white/15 hover:bg-white/25 border border-white/25 text-white font-bold text-xs md:text-sm px-4 py-2 rounded-lg transition" title="La FFHG diffuse les matchs en vidéo (hockeyfrance.tv)">📺 Regarder ↗</a>
                             ${ticket ? `<a href="${xmlEsc(ticket.url)}" target="_blank" rel="noopener" class="bg-lynx-red hover:bg-red-600 text-white font-black text-xs md:text-sm px-4 py-2 rounded-lg shadow transition">🎟️ Réserver mes places ↗</a>` : ''}
@@ -2622,6 +2627,14 @@
                 </div>`;
                 const btnIa = document.getElementById('matchday-ia');
                 if (btnIa) btnIa.onclick = () => { const b = document.getElementById('btn-ask-bot-h2h'); if (b) b.click(); };
+                // v2.22 : direct pré-rempli dès la veille — même mécanique que le bouton des lignes du calendrier
+                const blDay = document.getElementById('matchday-live');
+                if (blDay) blDay.onclick = () => {
+                    if (m && m.ffhgId) { liveJumpToMatch(m.ffhgId, m.homeTeam, m.awayTeam); return; }
+                    const t = document.querySelector('.main-nav-tab[data-content="live-match"]');
+                    if (t) t.click();
+                    else { const sel = document.getElementById('mobile-nav-select'); if (sel) { sel.value = 'live-match'; sel.dispatchEvent(new Event('change')); } }
+                };
                 const tick = () => {
                     const cdEl = document.getElementById('matchday-countdown');
                     if (!cdEl) { if (matchdayTimer) { clearInterval(matchdayTimer); matchdayTimer = null; } return; }
@@ -7366,15 +7379,18 @@ ${cards}
                 const phase = document.getElementById('qs-phase').value;
                 const date = document.getElementById('qs-date').value;
                 const note = document.getElementById('qs-note').value;
-                
-                const updates = { 
-                    scoreHome: h!==''?Number(h):null, 
-                    scoreAway: a!==''?Number(a):null, 
-                    isProl: p, 
+                // v2.22 : n° de rencontre FFHG — visible, modifiable, ou à remplir à la main si le scan ne l'a pas trouvé
+                const ffhgRaw = (document.getElementById('qs-ffhg') && document.getElementById('qs-ffhg').value.trim()) || '';
+
+                const updates = {
+                    scoreHome: h!==''?Number(h):null,
+                    scoreAway: a!==''?Number(a):null,
+                    isProl: p,
                     type: isPlayoff ? (phase.trim() || 'Playoff') : (isMaintien ? 'Maintien' : 'Saison'),
                     note: note,
-                    lastModified: new Date().toISOString() 
+                    lastModified: new Date().toISOString()
                 };
+                updates.ffhgId = ffhgRaw ? (liveMatchNum(ffhgRaw) || ffhgRaw) : null; // URL complète acceptée aussi ; vide = n° retiré
                 const tm = (document.getElementById('qs-time') && document.getElementById('qs-time').value) || '20:00';
                 if(date) updates.date = new Date(date + 'T' + tm + ':00').toISOString(); // date + heure LOCALES (l'ancien new Date(date) en UTC minuit reculait la date d'un jour et perdait l'heure du match)
 
@@ -7403,6 +7419,7 @@ ${cards}
                        document.getElementById('qs-away').value = m && isValidScore(m.scoreAway) ? m.scoreAway : '';
                        document.getElementById('qs-prol').checked = m ? m.isProl : false;
                        document.getElementById('qs-note').value = m && m.note ? m.note : '';
+                       const qsF = document.getElementById('qs-ffhg'); if (qsF) qsF.value = (m && m.ffhgId) || '';
                        if(m) { const dt = new Date(m.date); const pad = (n) => String(n).padStart(2, '0'); document.getElementById('qs-date').value = dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()); const qsT = document.getElementById('qs-time'); if (qsT) qsT.value = pad(dt.getHours()) + ':' + pad(dt.getMinutes()); } // date + heure LOCALES (toISOString lisait en UTC : la date reculait d'un jour pour les matchs minuit local)
                        
                        const isPO = m && (m.type === 'Playoff' || m.type === 'Playoffs' || (m.type && m.type !== 'Saison' && !/maintien/i.test(m.type)));
@@ -7807,6 +7824,16 @@ ${cards}
 
             // --- EXPORTS (Now filtered by Active Season) ---
             const getActiveRows = (data) => data.filter(d => d.season === activeSeason);
+            // v2.22 : export de MASSE — toutes les collections, toutes saisons, en un fichier JSON (le format de sauvegarde)
+            document.getElementById('btn-export-all').onclick = async () => {
+                const cols = ['calendar', 'players', 'goalies', 'ranking', 'league-players', 'league-goalies', 'news', 'context', 'live-reports', 'scout', 'rss-items'];
+                const data = {};
+                for (const c of cols) { try { data[c] = await dbFetchCol(c); } catch (e) { data[c] = []; } }
+                const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), version: APP_VERSION, collections: data }, null, 1)], { type: 'application/json' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'lynx_export_complet_' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
+                setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+                appAlert('📦 Export complet téléchargé (' + cols.length + ' collections, toutes saisons).');
+            };
             document.getElementById('btn-export-calendar').onclick = () => { const rows = getActiveRows(allMatches).map(m => ({ date: new Date(m.date).toLocaleDateString('fr-FR'), saison: m.season, poule: m.poule || 'B', domicile: m.homeTeam, exterieur: m.awayTeam, scoredom: m.scoreHome !== null ? m.scoreHome : '', scoreext: m.scoreAway !== null ? m.scoreAway : '', prol: m.isProl ? 'TRUE' : 'FALSE', type: m.type || 'Saison', note: m.note||'' })); exportToCSV(`calendrier_${activeSeason}.csv`, rows); };
             document.getElementById('btn-export-roster').onclick = () => { const rows = getActiveRows(roster).map(p => ({ saison: p.season, nom: p.name, numero: p.number, position: p.position, buts: p.goals, assist: p.assists, penalite: p.penalties })); exportToCSV(`effectif_${activeSeason}.csv`, rows); };
             // EXPORT GARDIENS CSV (Compatible Excel FR)
