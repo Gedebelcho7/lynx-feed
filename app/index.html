@@ -883,6 +883,7 @@
                     <button id="live-mute" class="text-sm px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-600 font-bold">🔊</button>
                 </div>
                 <p id="live-status-line" class="text-xs text-gray-500 mt-3 italic"></p>
+                <div id="live-team-pick" class="mt-3" style="display:none"></div>
                 <div id="live-intermission-stats" class="hidden mt-2 rounded-xl bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 p-3"></div>
             </div>
             <div id="live-score-card" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-6 rounded-2xl shadow-xl mb-6 transition-all overflow-hidden" style="display:none">
@@ -2646,6 +2647,7 @@
                 </div>`;
                 const bl = document.getElementById('matchday-live');
                 if (bl) bl.onclick = () => {
+                    if (m && m.ffhgId) { liveJumpToMatch(m.ffhgId, m.homeTeam, m.awayTeam); return; } // n° connu → direct pré-rempli + choix d'équipe
                     const t = document.querySelector(`.main-nav-tab[data-content="live-match"]`);
                     if (t) t.click();
                     else { const sel = document.getElementById('mobile-nav-select'); if (sel) { sel.value = 'live-match'; sel.dispatchEvent(new Event('change')); } }
@@ -4975,6 +4977,8 @@
                      rowClass = w ? 'border-l-4 border-green-500 bg-green-50/30 dark:bg-green-900/10' : 'border-l-4 border-red-500 bg-red-50/30 dark:bg-red-900/10';
                  } else { rowClass = 'border-l-4 border-lynx-red bg-red-50/10 dark:bg-red-900/5'; }
             } else if (hasScore) { rowClass = 'border-l-4 border-gray-300 dark:border-gray-600'; }
+            // v2.22 : accès direct au direct — visible sur les matchs à venir reliés à leur n° FFHG
+            const liveJumpBtn = (m.ffhgId && !hasScore) ? `<button class="live-jump-btn shrink-0 ml-2 bg-red-600 hover:bg-red-700 text-white text-[10px] md:text-xs font-bold px-2 py-1.5 rounded-lg shadow transition" data-ffhg="${xmlEsc(m.ffhgId)}" data-h="${xmlEsc(m.homeTeam)}" data-a="${xmlEsc(m.awayTeam)}" title="Ouvre le direct avec le n° de ce match déjà rempli — choisis ensuite l'équipe suivie en un clic">🔴 Live</button>` : '';
 
             return `<div class="flex justify-between items-center p-3 md:p-3 rounded shadow-sm border border-gray-100 dark:border-gray-700 text-sm md:text-base ${rowClass} cursor-pointer quick-score-trigger transition-all mb-3 relative" data-id="${m.id}" data-home="${m.homeTeam}" data-away="${m.awayTeam}">
                 <div class="w-14 text-gray-400 font-bold text-xs flex flex-col items-center leading-tight">${d}${tTxt ? `<span class="font-normal text-[10px]">${tTxt}</span>` : ''} ${noteIcon}</div>
@@ -4985,8 +4989,67 @@
                      <div class="flex items-center justify-start flex-1 gap-2"><img src="${getLogo(m.awayTeam)}" class="w-8 h-8 object-contain"><span class="font-bold hidden md:inline ${isLynxInvolved && !isHome?'text-lynx-dark dark:text-white':''}">${m.awayTeam}</span></div>
                 </div>
                 ${predBadge}
+                ${liveJumpBtn}
             </div>`;
         }
+        // v2.18 : équipe suivie en direct (vide = les Lynx de Valence) — déclarée au niveau module pour que
+        // le calendrier (bouton « 🔴 Live »), le bandeau jour de match et l'onglet Direct partagent le même réglage.
+        // Suivi d'une autre équipe possible (ex. Nantes - Caen) : sons, animations, notifs et punchline la prendront pour « nous ».
+        let liveFollowTeam = '';
+        try { liveFollowTeam = localStorage.getItem('lynx_live_team') || ''; } catch (e) {}
+        function liveIsMyTeam(name) {
+            const n = normalize(name || '');
+            if (!n) return false;
+            const t = normalize(liveFollowTeam || '');
+            return t ? (n.includes(t) || t.includes(n)) : /valence/i.test(n);
+        }
+        function liveMyTeamLabel() { return (liveFollowTeam || '').trim() || 'Lynx'; }
+        // v2.22 : « 🔴 Live » depuis le calendrier (ou le bandeau jour de match) → onglet Direct avec le n° du match
+        // pré-rempli, et choix de l'équipe suivie EN UN CLIC sur l'une des deux équipes (par défaut : les Lynx de Valence).
+        let liveJumpNum = '';
+        function liveRenderTeamPick(homeTeam, awayTeam) {
+            const box = document.getElementById('live-team-pick');
+            if (!box) return;
+            const btn = (name) => {
+                const mine = liveIsMyTeam(name);
+                return `<button class="live-team-pick-btn flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-bold text-sm transition ${mine ? 'border-red-600 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300' : 'border-gray-200 dark:border-gray-600 hover:border-red-400'}" data-team="${xmlEsc(name)}"><img src="${getLogo(name)}" class="w-7 h-7 object-contain">${xmlEsc(name)}${mine ? ' ✓' : ''}</button>`;
+            };
+            box.innerHTML = '<div class="text-[10px] uppercase font-bold text-gray-400 mb-1 text-center">Qui suis-tu en direct ? Un clic sur une équipe (par défaut : les Lynx de Valence)</div><div class="flex gap-2">' + btn(homeTeam) + btn(awayTeam) + '</div>';
+            box.style.display = '';
+            box.querySelectorAll('.live-team-pick-btn').forEach(b => b.onclick = () => {
+                const team = b.dataset.team || '';
+                liveFollowTeam = /valence/i.test(normalize(team)) ? '' : team; // Valence = réglage par défaut (champ vide)
+                try { localStorage.setItem('lynx_live_team', liveFollowTeam); } catch (e) {}
+                const ti = document.getElementById('live-follow-team'); if (ti) ti.value = liveFollowTeam;
+                liveRenderTeamPick(homeTeam, awayTeam); // déplace la marque ✓ sur l'équipe choisie
+                const stl = document.getElementById('live-status-line');
+                const m0 = (allMatches || []).find(x => String(x.ffhgId || '') === String(liveJumpNum));
+                const kt = m0 ? new Date(m0.date).getTime() : NaN;
+                if (isFinite(kt) && Date.now() >= kt - 3600e3) {
+                    const sb = document.getElementById('live-btn-start');
+                    if (sb && sb.style.display !== 'none') sb.click(); // match imminent ou en cours → surveillance lancée tout de suite
+                } else if (stl) stl.textContent = '✅ Équipe suivie : ' + (liveFollowTeam || 'Lynx de Valence') + ' — n° ' + liveJumpNum + ' pré-rempli. La surveillance démarrera le jour J (ou clique « Démarrer la surveillance »).';
+            });
+        }
+        function liveJumpToMatch(ffhgId, homeTeam, awayTeam) {
+            liveJumpNum = String(ffhgId || '');
+            if (!liveJumpNum) return;
+            const li = document.getElementById('live-match-url');
+            if (li) li.value = liveJumpNum;
+            const ai = document.getElementById('admin-live-match-id');
+            if (ai && !ai.value.trim()) ai.value = liveJumpNum;
+            const t = document.querySelector('.main-nav-tab[data-content="live-match"]');
+            if (t) t.click();
+            else { const sel = document.getElementById('mobile-nav-select'); if (sel) { sel.value = 'live-match'; sel.dispatchEvent(new Event('change')); } }
+            liveRenderTeamPick(homeTeam, awayTeam);
+        }
+        // Délégation en phase de capture : le clic sur « 🔴 Live » n'ouvre PAS la saisie de score de la ligne.
+        document.addEventListener('click', (e) => {
+            const b = e.target.closest('.live-jump-btn');
+            if (!b) return;
+            e.stopPropagation(); e.preventDefault();
+            liveJumpToMatch(b.dataset.ffhg, b.dataset.h, b.dataset.a);
+        }, true);
 
         // --- IMPORT HANDLERS ---
         // ==================== MOTEUR DE PRÉDICTION (Poisson + forme + dom/ext) ====================
@@ -7737,7 +7800,7 @@ ${cards}
                     try {
                         const res = await ffhgScanIds();
                         appAlert('🔗 Scan terminé.\n\n✅ ' + res.attached + ' n° nouvellement attaché(s)\n🔗 ' + res.known + ' match(s) déjà relié(s)\n📋 ' + res.total + ' match(s) de la saison en cours' + (res.missed.length ? '\n\n⚠️ Sans correspondance dans le flux FFHG (' + res.missed.length + ' au total, vérifier équipes/date) :\n' + res.missed.join('\n') : '\n\nTous les matchs sont reliés — résultats et direct passeront par ces numéros.'));
-                    } catch (e) { appAlert('❌ Scan impossible : ' + (e && e.message ? e.message : 'erreur') + '\n\nLe flux FFHG est peut-être momentanément indisponible — réessaie plus tard.'); }
+                    } catch (e) { appAlert('❌ Scan impossible : ' + (e && e.message ? e.message : 'erreur') + (e && e.details ? '\n\nDétail des tentatives : ' + e.details : '') + '\n\nLe cache en base se remplira au prochain cycle de l\'action GitHub (ou réessaie plus tard : les relais sont parfois surchargés).'); }
                     finally { btnFfhgScan.disabled = false; }
                 });
             };
@@ -8180,17 +8243,6 @@ ${cards}
             let liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false, maxTemps: 0, perEnded: new Set() };
             let liveFastUntil = 0; // v2.18 : poll rapide (5 s) jusqu'à cette échéance quand une action vient d'être détectée
             let liveLastPoll = 0, liveChecking = false; // v2.18 : anti-chevauchement de relevés + rythme adaptatif
-            let liveFollowTeam = ''; // v2.18 : équipe suivie en direct (vide = les Lynx de Valence)
-            try { liveFollowTeam = localStorage.getItem('lynx_live_team') || ''; } catch (e) {}
-            // v2.18 : suivi d'une autre équipe — par défaut Valence, mais un Nantes - Caen entre adversaires
-            // fonctionne aussi : sons, animations, notifications et punchline prennent cette équipe pour « nous ».
-            function liveIsMyTeam(name) {
-                const n = normalize(name || '');
-                if (!n) return false;
-                const t = normalize(liveFollowTeam || '');
-                return t ? (n.includes(t) || t.includes(n)) : /valence/i.test(n);
-            }
-            function liveMyTeamLabel() { return (liveFollowTeam || '').trim() || 'Lynx'; }
             const livePunchlines = [];
             const liveAnimQ = [];
             let liveAnimBusy = false, liveAnimTimer = null;
@@ -8204,20 +8256,32 @@ ${cards}
                 return n ? n[1] : null;
             }
             const LIVE_PROXIES = [
+                { name: 'corslol', build: u => 'https://api.cors.lol/?url=' + encodeURIComponent(u) },
                 { name: 'jina', build: u => 'https://r.jina.ai/' + u, parse: t => { const i = t.indexOf('{'); return i > 0 ? t.slice(i) : t; } },
-                { name: 'allorigins', build: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
-                { name: 'allorigins-get', build: u => 'https://api.allorigins.win/get?url=' + encodeURIComponent(u), parse: t => { try { return JSON.parse(t).contents || ''; } catch (err) { return t; } } },
-                { name: 'codetabs', build: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u) }
+                { name: 'allorigins', build: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) }
             ];
             async function liveFetchText(url) {
                 const bust = url + '&_cb=' + Date.now();
                 let lastErr = null;
+                const errs = [];
+                // v2.22 : tentative DIRECTE d'abord — si le site autorise le CORS, zéro intermédiaire ;
+                // s'il le ferme, l'échec est immédiat et on enchaîne sur les relais (perte : ~1 s).
+                try {
+                    const ctrl = new AbortController();
+                    const to = setTimeout(() => ctrl.abort(), 6000);
+                    const r = await fetch(bust, { cache: 'no-store', signal: ctrl.signal });
+                    clearTimeout(to);
+                    if (r.ok) {
+                        const t = await r.text();
+                        if (t && t.length >= 50) return t;
+                    }
+                } catch (e) { /* attendu quand le CORS est fermé */ }
                 for (let i = 0; i < LIVE_PROXIES.length; i++) {
                     const idx = (liveProxyIdx + i) % LIVE_PROXIES.length;
                     const p = LIVE_PROXIES[idx];
                     try {
                         const ctrl = new AbortController();
-                        const to = setTimeout(() => ctrl.abort(), 10000);
+                        const to = setTimeout(() => ctrl.abort(), 15000);
                         const r = await fetch(p.build(bust), { cache: 'no-store', signal: ctrl.signal });
                         clearTimeout(to);
                         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -8226,9 +8290,11 @@ ${cards}
                         if (!t || t.length < 50) throw new Error('réponse vide');
                         liveProxyIdx = idx;
                         return t;
-                    } catch (e) { lastErr = e; }
+                    } catch (e) { lastErr = e; errs.push(p.name + ' : ' + (e && e.message ? e.message : 'erreur')); }
                 }
-                throw lastErr || new Error('tous les proxys ont échoué');
+                const err = new Error((lastErr && lastErr.message) || 'tous les relais ont échoué');
+                err.details = errs.join(' ; '); // remonte dans les messages d'erreur (scan, synchro) : fini le diagnostic à l'aveugle
+                throw err;
             }
             // Le flux FFHG contient parfois PLUSIEURS clés "evenements" (doublons PHP) :
             // JSON.parse ne garde que la dernière. On extrait donc toutes les listes du texte brut.
