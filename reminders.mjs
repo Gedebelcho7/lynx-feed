@@ -12,7 +12,13 @@ const SITE_URL = "https://gedebelcho7.github.io/lynx-feed/app/"; // l'app, servi
 const FEED_URL = "https://gedebelcho7.github.io/lynx-feed/"; // racine Pages du dépôt lynx-feed — l'URL où vivent feed.xml et actus.html
 const KIT_VERSION = "2.22"; // version du kit — doit correspondre à APP_VERSION du site ; visible dans les logs de l'action et dans Admin → Diagnostic (doc settings/health)
 const VAPID_PUBLIC_KEY = "BFxrHv11rQ5N21z-SP-QDKnXCSFrXsEy4ovLUmE9TO-fzanQFdOsUl4iGPkylKZ55YvlnQevC2RJe5o82ZScnFg";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+// v2.22 : la clé secrète est nettoyée (espaces, guillemets, en-têtes PEM collés par erreur) puis VALIDÉE (43 caractères base64url).
+// Une clé invalide faisait échouer CHAQUE envoi en silence (l'action tournait, zéro notification partie) — désormais la clé
+// invalide est signalée dans settings/health (pushKeyOk) et vue dans l'onglet Diagnostic.
+const VAPID_PRIVATE_KEY_RAW = String(process.env.VAPID_PRIVATE_KEY || "");
+const VAPID_PRIVATE_KEY_CLEAN = VAPID_PRIVATE_KEY_RAW.replace(/-----BEGIN[^-]*-----/g, "").replace(/-----END[^-]*-----/g, "").replace(/[\s"']/g, "");
+const VAPID_PRIVATE_KEY = VAPID_PRIVATE_KEY_CLEAN.length === 43 ? VAPID_PRIVATE_KEY_CLEAN : "";
+const pushKeyProblem = VAPID_PRIVATE_KEY ? "" : (VAPID_PRIVATE_KEY_RAW.trim() ? "clé VAPID invalide (longueur " + VAPID_PRIVATE_KEY_CLEAN.length + " au lieu de 43 — recolle la valeur seule, sans préfixe ni guillemets)" : "secret GitHub VAPID_PRIVATE_KEY absent");
 const TZ = "Europe/Paris";
 const DEFAULT_MATCH_HOUR = 20; // heure de coup d'envoi présumée pour les matchs importés/saisis sans horaire
 const MAX_EXT_ITEMS = 10;  // actus externes max dans le flux public
@@ -1267,17 +1273,19 @@ async function main() {
   try {
     const pt = await getDoc("settings", "push-test");
     if (pt && pt.requestedAt && (!pt.pushedAt || String(pt.pushedAt) < String(pt.requestedAt))) {
-      let ok = 0;
+      let ok = 0, lastErr = pushKeyProblem;
       if (subs.length && VAPID_PRIVATE_KEY) {
-        const webpush = (await import("web-push")).default;
-        webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-        for (const s of subs) {
-          try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🏒 Lynx de Valence — test", body: "Si tu lis ça, les notifications marchent ! 🎉", url: SITE_URL, tag: "diag-test" })); ok++; }
-          catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } }
-        }
-      }
-      await patchDoc("settings", "push-test", { pushedAt: pt.requestedAt, pushedTo: ok, pushedAtIso: new Date().toISOString() });
-      console.log(`Test notifications : poussé à ${ok} abonné(s).`);
+        try {
+          const webpush = (await import("web-push")).default;
+          webpush.setVapidDetails("mailto:contact@lynx-valence.fr", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+          for (const s of subs) {
+            try { await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title: "🏒 Lynx de Valence — test", body: "Si tu lis ça, les notifications marchent ! 🎉", url: SITE_URL, tag: "diag-test" })); ok++; }
+            catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await delSub(s.id).catch(() => {}); } lastErr = (e && (e.message || e.statusCode)) || String(e); }
+          }
+        } catch (e) { lastErr = (e && e.message) || String(e); }
+      } else if (!subs.length) lastErr = "aucun abonné push en base (clique la cloche 🔔 sur le site)";
+      await patchDoc("settings", "push-test", { pushedAt: pt.requestedAt, pushedTo: ok, pushedAtIso: new Date().toISOString(), lastError: lastErr || null });
+      console.log(`Test notifications : poussé à ${ok} abonné(s).` + (lastErr ? " ERREUR : " + lastErr : ""));
     }
   } catch (e) { console.warn("Test push : " + (e && e.message ? e.message : e)); }
 
@@ -1386,7 +1394,7 @@ async function main() {
   try { await weeklyDigest(matches, rankings, subs, activeSeason); } catch (e) { console.warn("Digest hebdo : " + (e && e.message ? e.message : e)); }
   // 6) DOC DE SANTÉ : ce que l'Admin → Diagnostic de l'affiche affiche (les champs RSS/billetterie ne sont écrasés qu'en cycle complet)
   try {
-    const hFields = { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: doCollect ? "complet (RSS + billetterie)" : "rapide (page + articles)", subsCount: subs.length, feedItems: feedCount };
+    const hFields = { v: KIT_VERSION, lastRunAt: new Date().toISOString(), runMode: doCollect ? "complet (RSS + billetterie)" : "rapide (page + articles)", subsCount: subs.length, feedItems: feedCount, pushKeyOk: VAPID_PRIVATE_KEY ? "oui" : ("NON — " + (pushKeyProblem || "clé absente")) };
     if (doCollect) Object.assign(hFields, { rssCycleAt: new Date().toISOString(), extFresh: collect.fresh.length, feedsFailed: String((collect.failed || []).join(" ; ")).slice(0, 300), lastTicketCheckAt: tkt.at, billetterieSeen: tkt.seen, billetterieAdded: tkt.added });
     await patchDoc("settings", "health", hFields);
   } catch (e) { console.warn("health : " + (e && e.message ? e.message : e)); }
