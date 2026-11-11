@@ -1572,11 +1572,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_YrujuVF7QQ2YfLzXfURY05Rsrkw5uP9K_0154kT";
+        const mistralApiKey = "";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -2135,14 +2135,39 @@
                     return probWin;
                 };
                 const posOf = (adj) => { const s = sortRankFFHG(base.map(r => ({ ...r, pts: (r.pts || 0) + (adj.get(normalize(r.team)) || 0) })), activeSeason); const i = s.findIndex(t => normalize(t.team).includes('valence')); return i >= 0 ? i + 1 : null; };
+                // v2.22 : barème FFHG COMPLET sur le match des Lynx — V=3, V-prol=2, D-prol=1, D=0
+                // (les prolongations comptent enfin) ; chez les autres, victoire à 3 pts comme avant.
+                const lynxIssue = (m, rule) => {
+                    const pr = pred(m);
+                    const lT = normalize(m.homeTeam).includes('valence') ? m.homeTeam : m.awayTeam;
+                    const oT = lT === m.homeTeam ? m.awayTeam : m.homeTeam;
+                    if (!pr || pr.pT == null) { const w = pickWinner(m, rule); return { w, ptsW: 3, ptsL: 0, ot: false, p: winProb(m, w) }; }
+                    const lynxHome = normalize(m.homeTeam).includes('valence');
+                    const issues = [
+                        { w: lT, ptsW: 3, ptsL: 0, ot: false, p: lynxHome ? pr.pH : pr.pA },                          // victoire dans le temps réglementaire
+                        { w: lT, ptsW: 2, ptsL: 1, ot: true, p: pr.pT * (lynxHome ? pr.otHc : 1 - pr.otHc) },         // victoire en prolongation
+                        { w: oT, ptsW: 2, ptsL: 1, ot: true, p: pr.pT * (lynxHome ? 1 - pr.otHc : pr.otHc) },         // défaite en prolongation
+                        { w: oT, ptsW: 3, ptsL: 0, ot: false, p: lynxHome ? pr.pA : pr.pH }                           // défaite dans le temps réglementaire
+                    ];
+                    if (rule === 'ideal') return issues[0];
+                    if (rule === 'worst') return issues[3];
+                    if (rule === 'real') return issues.find(i => i.w === lT && i.p >= 0.33) || issues.slice().sort((a, b) => b.p - a.p)[0];
+                    return issues.slice().sort((a, b) => b.p - a.p)[0];
+                };
                 const mk = (rule) => {
                     const adj = new Map(); let prob = 1, hasP = false;
                     const add = (t, n) => { const k = normalize(t); adj.set(k, (adj.get(k) || 0) + n); };
                     const lines = allUp.map(m => {
+                        if (isLynxM(m)) {
+                            const it = lynxIssue(m, rule);
+                            add(it.w, it.ptsW); add(it.w === m.homeTeam ? m.awayTeam : m.homeTeam, it.ptsL);
+                            if (it.p != null) { prob *= it.p; hasP = true; }
+                            return { m, w: it.w, lynx: true, ot: it.ot };
+                        }
                         const w = pickWinner(m, rule);
                         add(w, 3);
                         const p = winProb(m, w); if (p != null) { prob *= p; hasP = true; }
-                        return { m, w, lynx: isLynxM(m) };
+                        return { m, w, lynx: isLynxM(m), ot: false };
                     });
                     return { adj, prob: hasP ? prob : null, lines };
                 };
@@ -2181,8 +2206,8 @@
                         const eH = l.eH == null ? '?' : l.eH.toFixed(1), eA = l.eA == null ? '?' : l.eA.toFixed(1);
                         return `<div>${l.lynx ? '🦁 ' : ''}${xmlEsc(l.m.homeTeam)} – ${xmlEsc(l.m.awayTeam)} : <b class="text-gray-600 dark:text-gray-300">${eH} – ${eA}</b> pt(s) attendus</div>`;
                     }
-                    // code couleur : l'équipe qui DOIT gagner en vert
-                    return `<div>${l.lynx ? '🦁 ' : ''}${xmlEsc(l.m.homeTeam)} – ${xmlEsc(l.m.awayTeam)} : <span class="text-green-600 dark:text-green-400 font-bold">${xmlEsc(l.w)}</span> gagne</div>`;
+                    // code couleur : l'équipe qui DOIT gagner en vert — « (ap) » = victoire en prolongation (barème 2/1)
+                    return `<div>${l.lynx ? '🦁 ' : ''}${xmlEsc(l.m.homeTeam)} – ${xmlEsc(l.m.awayTeam)} : <span class="text-green-600 dark:text-green-400 font-bold">${xmlEsc(l.w)}</span> gagne${l.ot ? ' <i>(après prolong.)</i>' : ''}</div>`;
                 };
                 const rowsHtml = list.map(sc => {
                     const cls = sc.pos == null ? 'text-gray-500' : (sc.pos < pos0 + 1 ? 'text-green-600 dark:text-green-400' : (sc.pos > pos0 + 1 ? 'text-red-500 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'));
@@ -2191,6 +2216,41 @@
                 }).join('');
                 el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Place des Lynx en combinant tous les résultats — actuellement ${pos0 + 1}${pos0 === 0 ? 'ᵉʳ' : 'e'} · calculé par le modèle du site · 🎯 = issue favorable aux Lynx dès qu'elle a au moins 1 chance sur 3</p>${rowsHtml}</div>`;
             } catch (e) { el.innerHTML = ''; }
+        }
+
+        // v2.22 : cases de l'accueil réductibles — un chevron sur chaque titre replie/déplie la carte (mémorisé par appareil)
+        function initHomeCollapse() {
+            const home = document.getElementById('home-summary');
+            if (!home) return;
+            let saved = {};
+            try { saved = JSON.parse(localStorage.getItem('lynx_home_fold') || '{}'); } catch (e) {}
+            home.querySelectorAll('h3').forEach(h => {
+                if (h.dataset.foldInit) return;
+                const card = h.closest('div[class*="rounded-xl"]');
+                if (!card) return;
+                // le bandeau-titre = l'ancêtre du titre qui est enfant direct de la carte
+                let header = h;
+                while (header.parentElement && header.parentElement !== card) header = header.parentElement;
+                const body = [...card.children].filter(c => c !== header && !header.contains(c));
+                if (!body.length) return;
+                h.dataset.foldInit = '1';
+                const key = normalize(h.textContent).replace(/[^a-z0-9]/g, '').slice(0, 20) || 'case';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'home-fold-btn ml-auto shrink-0 w-7 h-7 rounded-full text-gray-400 hover:text-lynx-red hover:bg-gray-100 dark:hover:bg-gray-800 transition text-xs';
+                btn.setAttribute('aria-label', 'Réduire / déployer cette case');
+                const setOpen = (open, persist) => {
+                    body.forEach(b => { b.style.display = open ? '' : 'none'; });
+                    btn.textContent = open ? '▴' : '▾';
+                    if (persist) { saved[key] = open ? 0 : 1; try { localStorage.setItem('lynx_home_fold', JSON.stringify(saved)); } catch (e) {} }
+                };
+                const toggle = (e) => { e.stopPropagation(); setOpen(body[0].style.display === 'none', true); };
+                btn.onclick = toggle;
+                header.classList.add('cursor-pointer', 'select-none');
+                header.appendChild(btn);
+                header.onclick = toggle;
+                setOpen(!(saved[key] === 1), false);
+            });
         }
 
         // v2.22 : classement vivant — via l'interface JSON de la FFHG (celle que la page calendrier du site appelle en arrière-plan) :
@@ -2984,7 +3044,8 @@
                     // pas de suivi en direct pour ce match : on affiche quand même le bilan de la saison (données réelles)
                     const fin = allMatches.filter(x => x.season === activeSeason && (!x.type || x.type === 'Saison') && isMatchFinished(x) && x.scoreHome != null && x.scoreAway != null);
                     let v = 0, nn = 0, dd = 0;
-                    fin.forEach(x => { const lv = normalize(x.homeTeam).includes('valence'); const my = lv ? x.scoreHome : x.scoreAway, oo = lv ? x.scoreAway : x.scoreHome; if (my > oo) v++; else if (my < oo) dd++; else nn++; });
+                    // v2.22 : ne compter que les matchs où Valence joue réellement (avant : chaque match sans Valence était compté comme une défaite)
+                    fin.forEach(x => { const lv = normalize(x.homeTeam).includes('valence'); const av = normalize(x.awayTeam).includes('valence'); if (!lv && !av) return; const my = lv ? x.scoreHome : x.scoreAway, oo = lv ? x.scoreAway : x.scoreHome; if (my > oo) v++; else if (my < oo) dd++; else nn++; });
                     el.insertAdjacentHTML('beforeend', `<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 w-full text-center"><span class="text-[11px] font-bold text-gray-600 dark:text-gray-300">Bilan de la saison : <span class="text-green-600">${v} V</span> · ${nn} N · <span class="text-red-500">${dd} D</span></span><div class="text-[10px] text-gray-400 italic mt-1">Tiers, buteurs et joueur du match s'affichent ici après un match suivi en direct.</div></div>`);
                     return;
                 }
@@ -4920,7 +4981,8 @@
             // score de fin de temps réglementaire et on désigne un vainqueur en prolongation.
             const expDraw = best.s[0] === best.s[1];
             const expWinner = pHomeWin >= pAwayWin ? 'H' : 'A';
-            return { pHomeWin, pAwayWin, pT, expScore: best.s, expDraw, expWinner, ePts: [eH, eA], conf, absN: adjH.n + adjA.n, lamH: lamHF, lamA: lamAF };
+            // v2.22 : probabilités détaillées pour le barème FFHG des scénarios (V=3, V-prol=2, D-prol=1, D=0)
+            return { pHomeWin, pAwayWin, pT, pH, pA, otHc, expScore: best.s, expDraw, expWinner, ePts: [eH, eA], conf, absN: adjH.n + adjA.n, lamH: lamHF, lamA: lamAF };
         }
 
         function backtestModel(season, poules) {
@@ -5002,9 +5064,24 @@
         }
 
         let forecastCache = { key: '', data: null };
+        // v2.22 : les prévisions ne se recalculent qu'à la JOURNÉE complète (demande d'Ugo) — rentrer un match
+        // d'une journée en cours ne fait plus bouger les prévisions des autres matchs du même jour.
+        function doneJourneesCount(season) {
+            const ms = (allMatches || []).filter(m => m && m.season === season && (!m.type || m.type === 'Saison'));
+            const groups = {};
+            ms.forEach(m => { const k = m.journee || ('d:' + String(m.date || '').slice(0, 10)); (groups[k] = groups[k] || []).push(m); });
+            let done = 0;
+            Object.values(groups).forEach(g => {
+                // une journée est « complète » quand tous ses matchs ont un score — ou quand un match sans score
+                // date de plus de 21 jours (reporté sans reprogrammation : il ne doit pas figer les prévisions)
+                if (g.every(m => isMatchFinished(m) || (!isMatchFinished(m) && m.date && (Date.now() - new Date(m.date).getTime()) > 21 * 864e5))) done++;
+            });
+            return done;
+        }
         function getForecast(season) {
             const doneCount = allMatches.filter(m => m.season === season && isMatchFinished(m)).length;
-            const key = season + '|' + doneCount + '|' + JSON.stringify(seasonFormats[season] || {});
+            const doneJ = doneJourneesCount(season);
+            const key = season + '|' + doneJ + '|' + JSON.stringify(seasonFormats[season] || {});
             if (forecastCache.key === key && forecastCache.data) return forecastCache.data;
             let data = null;
             try { if (doneCount >= 4) data = computeForecast(season); } catch (e) { console.error('Forecast error', e); data = null; }
@@ -5636,7 +5713,7 @@
                     try {
                         const sc = computeScenariosData(allMatches, sorted);
                         if (sc && sc.list) {
-                            const fmtSc = (s) => { const pT = s.prob != null ? ` (~${s.prob < 0.01 ? '<1' : Math.round(s.prob * 100)} % de chances)` : ''; const det = s.lines.map(l => l.mean ? `${l.m.homeTeam} - ${l.m.awayTeam} : ${(l.eH == null ? '?' : l.eH.toFixed(1))}-${(l.eA == null ? '?' : l.eA.toFixed(1))} pts attendus` : `${l.m.homeTeam} - ${l.m.awayTeam} : victoire de ${l.w}`).join(' ; '); return `${s.lbl}${pT} : Lynx ${s.pos == null ? '?' : s.pos + (s.pos === 1 ? 'er' : 'e')} (${det})`; };
+                            const fmtSc = (s) => { const pT = s.prob != null ? ` (~${s.prob < 0.01 ? '<1' : Math.round(s.prob * 100)} % de chances)` : ''; const det = s.lines.map(l => l.mean ? `${l.m.homeTeam} - ${l.m.awayTeam} : ${(l.eH == null ? '?' : l.eH.toFixed(1))}-${(l.eA == null ? '?' : l.eA.toFixed(1))} pts attendus` : `${l.m.homeTeam} - ${l.m.awayTeam} : victoire de ${l.w}${l.ot ? ' après prolongation (2 pts - 1 pt)' : ''}`).join(' ; '); return `${s.lbl}${pT} : Lynx ${s.pos == null ? '?' : s.pos + (s.pos === 1 ? 'er' : 'e')} (${det})`; };
                             lines.push('**Scénarios sur les 10 prochains jours** (calcul du site, modèle interne — chiffres exacts, reprends-les tels quels si tu les cites) : ' + sc.list.map(fmtSc).join(' | ') + '.');
                         }
                     } catch (e) {}
@@ -6991,6 +7068,7 @@ ${cards}
                 } catch (e) {}
             }
             document.getElementById('theme-toggle').onclick = () => document.documentElement.classList.toggle('dark');
+            try { initHomeCollapse(); } catch (e) {} // v2.22 : cases de l'accueil réductibles
             
             // MOBILE MODE TOGGLE
             const toggleBtn = document.getElementById('mobile-mode-toggle');
@@ -7258,7 +7336,7 @@ ${cards}
                         try {
                             const sc = computeScenariosData(allMatches, null);
                             if (sc && sc.list) {
-                                const fmtSc = (s) => { const pT = s.prob != null ? ` (≈ ${s.prob < 0.01 ? '<1' : Math.round(s.prob * 100)} % de chances)` : ''; const det = s.lines.map(l => l.mean ? `${l.m.homeTeam} - ${l.m.awayTeam} : ${(l.eH == null ? '?' : l.eH.toFixed(1))}-${(l.eA == null ? '?' : l.eA.toFixed(1))} pts attendus` : `${l.m.homeTeam} - ${l.m.awayTeam} : victoire de ${l.w}`).join(' ; '); return `${s.lbl}${pT} : Lynx ${s.pos == null ? '?' : s.pos + (s.pos === 1 ? 'er' : 'e')} — ${det}`; };
+                                const fmtSc = (s) => { const pT = s.prob != null ? ` (≈ ${s.prob < 0.01 ? '<1' : Math.round(s.prob * 100)} % de chances)` : ''; const det = s.lines.map(l => l.mean ? `${l.m.homeTeam} - ${l.m.awayTeam} : ${(l.eH == null ? '?' : l.eH.toFixed(1))}-${(l.eA == null ? '?' : l.eA.toFixed(1))} pts attendus` : `${l.m.homeTeam} - ${l.m.awayTeam} : victoire de ${l.w}${l.ot ? ' après prolongation (2 pts - 1 pt)' : ''}`).join(' ; '); return `${s.lbl}${pT} : Lynx ${s.pos == null ? '?' : s.pos + (s.pos === 1 ? 'er' : 'e')} — ${det}`; };
                                 ctx += 'Scénarios calculés par le site pour les 10 prochains jours (modèle interne — chiffres exacts, reprends-les tels quels si tu les cites) :\n' + sc.list.map(fmtSc).map(x => '- ' + x).join('\n') + '\n';
                             }
                         } catch (e) {}
@@ -7964,6 +8042,8 @@ ${cards}
                 return (num + nom).trim();
             }
             function liveEvtDetail(ev) {
+                // v2.22 : les temps morts EXISTENT dans le flux (vérifié sur Valence-Nantes) — libellé lisible avec l'équipe
+                if (ev.type === 'TEMPS_MORT') { const t = ev.equipe ? (ev.equipe.libelle_complet || ev.equipe.libelle || '') : ''; return 'Temps mort' + (t ? ' — ' + t : ''); }
                 const actor = ev.tireur || ev.joueur || ev.personne || ev.buteur || ev.gagnant || ev.participant;
                 let d = livePlayerName(actor);
                 if (ev.type === 'SANCTION') {
@@ -8635,9 +8715,12 @@ ${cards}
             }
             async function liveSaveReport(st) {
                 try {
-                    if (!db || fbLoadFailed || !st || !st.events || !st.events.length) return;
+                    // v2.22 : on archive même SANS événement (score, tiers, joueur du match) — un rapport
+                    // partiel valait mieux que pas de rapport (la base live restait vide). Retourne true/false.
+                    if (!db || fbLoadFailed || !st) return false;
+                    const evs = st.events || [];
                     const { dIso, id } = liveResultId(st);
-                    const per = livePeriodsFrom(st);
+                    const per = livePeriodsFrom({ ...st, events: evs });
                     const rep = {
                         date: dIso, season: activeSeason, savedAt: new Date().toISOString(),
                         homeTeam: st.homeName, awayTeam: st.awayName,
@@ -8648,10 +8731,11 @@ ${cards}
                         shotsH: st.shotsH || 0, shotsA: st.shotsA || 0,
                         mvps: (st.mvps || []).map(x => x.name + ' (' + (x.teamId === st.homeId ? st.homeName : st.awayName) + ')'),
                         patinoire: st.patinoire || '', journee: st.journee || null, phase: st.phaseTxt || '',
-                        events: st.events.map(ev => ({ t: ev.temps || 0, time: ev.time, ty: ev.type, side: ev.teamId === st.homeId ? 'H' : (ev.teamId === st.awayId ? 'A' : '?'), who: ev.detail || '', sit: ev.sit || null, ice: (ev.onIce && ev.onIce.length) ? ev.onIce.join(', ') : null }))
+                        events: evs.map(ev => ({ t: ev.temps || 0, time: ev.time, ty: ev.type, side: ev.teamId === st.homeId ? 'H' : (ev.teamId === st.awayId ? 'A' : '?'), who: ev.detail || '', sit: ev.sit || null, ice: (ev.onIce && ev.onIce.length) ? ev.onIce.join(', ') : null }))
                     };
                     await setDoc(doc(db, `${basePath}/live-reports/${id}`), rep, { merge: true });
-                } catch (e) { console.warn('liveSaveReport', e); }
+                    return true;
+                } catch (e) { console.warn('liveSaveReport', e); return false; }
             }
             // v2.18 : scouting auto — à la fin d'un match suivi, on archive l'effectif vu en direct
             // (joueurs alignés, buts du match, tirs reçus/arrêts des gardiens) dans la collection « scout »,
@@ -9029,7 +9113,7 @@ ${cards}
                 if (Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (err) {} }
                 liveSaveSettings();
                 liveFirstPoll = true; livePrev = null; liveErrCount = 0;
-                liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false };
+                liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false, maxTemps: 0, perEnded: new Set() }; // v2.22 : maxTemps/perEnded réinitialisés (leur absence faisait planter chaque relevé dès 20 min de jeu → plus aucun archivage)
                 livePunchlines.length = 0;
                 document.getElementById('live-btn-start').style.display = 'none';
                 document.getElementById('live-btn-stop').style.display = '';
@@ -9079,7 +9163,8 @@ ${cards}
                         ? { scoreHome: st.homeScore, scoreAway: st.awayScore, isProl: liveHadOvertime(st) }
                         : { date: dIso, season: activeSeason, poule: 'B', homeTeam: st.homeName, awayTeam: st.awayName, scoreHome: st.homeScore, scoreAway: st.awayScore, isProl: liveHadOvertime(st), type: 'Saison' };
                     await setDoc(doc(db, `${basePath}/calendar/${exist ? exist.id : id}`), m, { merge: true });
-                    await liveSaveReport(st); // même identifiant → le rapport live est rattaché au match du calendrier
+                    const repOk = await liveSaveReport(st); // même identifiant → le rapport live est rattaché au match du calendrier
+                    if (!repOk) appAlert('⚠️ Le résultat est dans le calendrier, mais le rapport live (déroulé) n\'a pas pu être écrit en base — vérifie ta connexion et réessaie.');
                     appAlert(exist ? '✅ Résultat enregistré : le match EXISTANT du calendrier a été mis à jour (aucun doublon créé).' : '✅ Résultat enregistré dans le calendrier ! Article publié dès que les données sont complètes (stats joueurs), au plus tard 48h.');
                     lastResultCheck = 0; setTimeout(() => { try { autoResultCheck(); } catch(e) { console.warn('article auto live', e); } }, 6000);
                     populateLiveReplay(); // v2.22 : la liste « Revivre un match » est rafraîchie tout de suite
