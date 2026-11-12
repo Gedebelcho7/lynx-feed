@@ -477,6 +477,7 @@
                     <option value="all">Toutes les équipes</option>
                     <option value="lynx">Matchs des Lynx</option>
                 </select>
+                <button id="btn-jump-next-full" class="bg-lynx-red hover:bg-red-700 text-white font-bold text-xs px-3 py-2 rounded-lg shrink-0" title="Fait défiler jusqu'au prochain match à venir"><i class="fa-solid fa-down-long mr-1"></i>Prochaine journée</button>
                 <button id="cal-search-reset" class="text-xs font-bold text-gray-400 hover:text-lynx-red px-2 py-2">Réinitialiser</button>
             </div>
 
@@ -511,6 +512,7 @@
             <div class="mb-4 flex flex-wrap gap-2">
                 <button id="btn-gcal-all" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-2 rounded-lg"><i class="fa-solid fa-calendar-plus mr-1"></i>Google Calendar — tous les matchs (.ics)</button>
                 <button id="btn-gcal-home" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-2 rounded-lg"><i class="fa-solid fa-house mr-1"></i>Domicile uniquement (.ics)</button>
+                <button id="btn-jump-next-lynx" class="bg-lynx-red hover:bg-red-700 text-white font-bold text-xs px-3 py-2 rounded-lg" title="Fait défiler jusqu'au prochain match des Lynx"><i class="fa-solid fa-down-long mr-1"></i>Prochaine journée</button>
             </div>
             <div class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 md:p-6 rounded-xl shadow-xl"><div id="lynx-matches-list" class="space-y-3"></div></div>
         </section>
@@ -1584,7 +1586,7 @@
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_YrujuVF7QQ2YfLzXfURY05Rsrkw5uP9K_0154kT";
+        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -3378,6 +3380,9 @@
             if (w) w.onchange = () => { calFilters.when = w.value; try { renderFullCal(calSeasonMs()); } catch (e) {} };
             if (s) s.onchange = () => { calFilters.scope = s.value; try { renderFullCal(calSeasonMs()); } catch (e) {} };
             if (r) r.onclick = () => { calFilters = { ta: '', tb: '', when: 'all', scope: 'all' }; if (a) a.value = ''; if (b) b.value = ''; if (w) w.value = 'all'; if (s) s.value = 'all'; try { renderFullCal(calSeasonMs()); } catch (e) {} };
+            // v2.22 : bouton « Prochaine journée » — défile jusqu'au match à venir marqué dans la liste
+            const jf = document.getElementById('btn-jump-next-full');
+            if (jf) jf.onclick = () => scrollSectionToNextMatch('full-calendar');
         }
 
         function renderFullCal(list) {
@@ -4990,8 +4995,18 @@
                      rowClass = w ? 'border-l-4 border-green-500 bg-green-50/30 dark:bg-green-900/10' : 'border-l-4 border-red-500 bg-red-50/30 dark:bg-red-900/10';
                  } else { rowClass = 'border-l-4 border-lynx-red bg-red-50/10 dark:bg-red-900/5'; }
             } else if (hasScore) { rowClass = 'border-l-4 border-gray-300 dark:border-gray-600'; }
-            // v2.22 : accès direct au direct — visible sur les matchs à venir reliés à leur n° FFHG
-            const liveJumpBtn = (m.ffhgId && !hasScore) ? `<button class="live-jump-btn shrink-0 ml-2 bg-red-600 hover:bg-red-700 text-white text-[10px] md:text-xs font-bold px-2 py-1.5 rounded-lg shadow transition" data-ffhg="${xmlEsc(m.ffhgId)}" data-h="${xmlEsc(m.homeTeam)}" data-a="${xmlEsc(m.awayTeam)}" title="Ouvre le direct avec le n° de ce match déjà rempli — choisis ensuite l'équipe suivie en un clic">🔴 Live</button>` : '';
+            // v2.22 : bouton Live seulement le JOUR du match — rouge avant le coup d'envoi, vert pendant la fenêtre
+            // du match (coup d'envoi → +3h30), rien les autres jours. Horaire inconnu (import à minuit) = 20 h supposées.
+            let liveJumpBtn = '';
+            if (m.ffhgId && !hasScore) {
+                const dK = new Date(m.date);
+                if (!dK.getHours() && !dK.getMinutes()) dK.setHours(20, 0, 0, 0);
+                const tK = dK.getTime();
+                const nowD = new Date();
+                const sameDay = dK.getFullYear() === nowD.getFullYear() && dK.getMonth() === nowD.getMonth() && dK.getDate() === nowD.getDate();
+                const inWin = Date.now() >= tK && Date.now() < tK + 3.5 * 3600e3;
+                if (sameDay) liveJumpBtn = `<button class="live-jump-btn shrink-0 ${inWin ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} text-white text-[10px] md:text-xs font-bold px-2 py-1.5 rounded-lg shadow transition" data-ffhg="${xmlEsc(m.ffhgId)}" data-h="${xmlEsc(m.homeTeam)}" data-a="${xmlEsc(m.awayTeam)}" title="${inWin ? 'Le match est (ou devrait être) en cours — ouvre le direct' : 'Match ce jour — ouvre le direct avec le n° déjà rempli'}">${inWin ? '🟢' : '🔴'} Live</button>`;
+            }
 
             return `<div class="flex justify-between items-center p-3 md:p-3 rounded shadow-sm border border-gray-100 dark:border-gray-700 text-sm md:text-base ${rowClass} cursor-pointer quick-score-trigger transition-all mb-3 relative" data-id="${m.id}" data-home="${m.homeTeam}" data-away="${m.awayTeam}">
                 <div class="w-14 text-gray-400 font-bold text-xs flex flex-col items-center leading-tight">${d}${tTxt ? `<span class="font-normal text-[10px]">${tTxt}</span>` : ''} ${noteIcon}</div>
@@ -5001,8 +5016,7 @@
                      <div class="bg-gray-100 dark:bg-gray-700 px-3 py-1.5 rounded font-black min-w-[50px] text-center text-base">${score}</div>
                      <div class="flex items-center justify-start flex-1 gap-2"><img src="${getLogo(m.awayTeam)}" class="w-8 h-8 object-contain"><span class="font-bold hidden md:inline ${isLynxInvolved && !isHome?'text-lynx-dark dark:text-white':''}">${m.awayTeam}</span></div>
                 </div>
-                ${predBadge}
-                ${liveJumpBtn}
+                <div class="w-20 md:w-24 shrink-0 flex flex-col items-center justify-center gap-1">${predBadge}${liveJumpBtn}</div>
             </div>`;
         }
         // v2.18 : équipe suivie en direct (vide = les Lynx de Valence) — déclarée au niveau module pour que
@@ -5414,6 +5428,26 @@
         }
 
         // Pronostic à afficher sur une ligne de calendrier : à venir = modèle actuel ; joué = pronostic rejoué avant-match
+        // v2.22 : filet de sécurité — prédiction d'un match JOUÉ recalculée à la volée (uniquement avec les matchs
+        // d'AVANT, sans tricher) quand elle manque au backtest : le badge 🔮 reste affiché quoi qu'il arrive
+        // (cache figé par une journée avec un match reporté, match recréé/restauré, import…).
+        const pastPredMemo = new Map();
+        function pastPredOnTheFly(m) {
+            try {
+                const key = activeSeason + '|' + doneJourneesCount(activeSeason);
+                const hit = pastPredMemo.get(m.id);
+                if (hit && hit.key === key) return hit.val;
+                const t0 = new Date(m.date).getTime();
+                const inPoule = seasonHasPoules(m.season) ? (x) => (x.poule || 'B').toUpperCase() === (m.poule || 'B').toUpperCase() : () => true;
+                const prior = (allMatches || []).filter(x => x && x.season === m.season && (!x.type || x.type === 'Saison') && isMatchFinished(x) && new Date(x.date).getTime() < t0 && inPoule(x));
+                if (prior.length < 3) return null;
+                const p = predictMatch(buildPoolModel(prior), m.homeTeam, m.awayTeam, t0);
+                const actW = m.scoreHome > m.scoreAway ? 'H' : (m.scoreAway > m.scoreHome ? 'A' : null);
+                const val = { past: true, s: p.expScore, pct: Math.round(Math.max(p.pHomeWin, p.pAwayWin) * 100), exact: p.expScore[0] === m.scoreHome && p.expScore[1] === m.scoreAway, right: !!actW && (p.pHomeWin >= p.pAwayWin ? 'H' : 'A') === actW, draw: !!p.expDraw, w: p.expWinner };
+                pastPredMemo.set(m.id, { key, val });
+                return val;
+            } catch (e) { return null; }
+        }
         function getMatchPredInfo(m) {
             try {
                 if (!m || m.season !== activeSeason || (m.type && m.type !== 'Saison')) return null;
@@ -5421,7 +5455,7 @@
                 if (!fc) return null;
                 if (isMatchFinished(m)) {
                     const h = (fc.histPreds || {})[m.id];
-                    if (!h) return null;
+                    if (!h) return pastPredOnTheFly(m); // v2.22 : une prédiction jouée ne disparaît jamais
                     const exact = h.s[0] === m.scoreHome && h.s[1] === m.scoreAway;
                     const predW = h.pH >= h.pA ? 'H' : 'A';
                     const actW = m.scoreHome > m.scoreAway ? 'H' : (m.scoreAway > m.scoreHome ? 'A' : null);
@@ -8086,6 +8120,8 @@ ${cards}
             if(btnGcalAll) btnGcalAll.onclick = () => exportLynxIcs(false);
             const btnGcalHome = document.getElementById('btn-gcal-home');
             if(btnGcalHome) btnGcalHome.onclick = () => exportLynxIcs(true);
+            const btnJumpLynx = document.getElementById('btn-jump-next-lynx');
+            if(btnJumpLynx) btnJumpLynx.onclick = () => scrollSectionToNextMatch('lynx-calendar');
             const btnTestPush = document.getElementById('btn-test-push');
             if (btnTestPush) btnTestPush.onclick = async () => { try { await setDoc(doc(db, `${basePath}/settings/push-test`), { requestedAt: new Date().toISOString() }, { merge: true }); appAlert('Test demandé ! L\'action GitHub enverra une vraie notification push d\'ici 5 minutes (même site fermé). Reviens ici : la ligne « Test notifications » affichera le résultat.'); } catch (e) { appAlert('Erreur : ' + e.message); } };
             const btnForceRss = document.getElementById('btn-force-rss');
