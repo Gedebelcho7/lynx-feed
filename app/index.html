@@ -1582,11 +1582,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
+        const mistralApiKey = "";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -1737,8 +1737,8 @@
                     </div>
                 </div>`;
             document.body.appendChild(overlay);
-            document.getElementById('cf-cancel').onclick = () => overlay.remove();
-            document.getElementById('cf-ok').onclick = () => { overlay.remove(); onConfirm(); };
+            overlay.querySelector('#cf-cancel').onclick = () => overlay.remove();
+            overlay.querySelector('#cf-ok').onclick = () => { overlay.remove(); onConfirm(); };
         };
 
         // ==================== SÉCURITÉ ADMIN (protection légère par mot de passe) ====================
@@ -1798,16 +1798,19 @@
             // v2.22 : purger les animations live et passer AU-DESSUS du takeover plein écran (z 10001) —
             // pendant le rattrapage d'un vieux match, l'animation recouvrait l'alerte et le bouton OK était inclicable
             try { if (typeof liveAnimQ !== 'undefined' && liveAnimQ) { liveAnimQ.length = 0; const tk = document.getElementById('live-takeover'); if (tk && tk.style.display !== 'none' && typeof liveTakeoverHide === 'function') liveTakeoverHide(true); } } catch (e) {}
+            // v2.22 : un SEUL message à la fois — deux alertes empilées partageaient le même id de bouton,
+            // celui du dessus n'avait aucun gestionnaire et le OK était inclicable (fin de match).
+            try { document.querySelectorAll('.app-alert-overlay').forEach(o => o.remove()); } catch (e) {}
             const overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[10050] flex items-center justify-center p-4';
+            overlay.className = 'app-alert-overlay fixed inset-0 bg-black/80 backdrop-blur-sm z-[10050] flex items-center justify-center p-4';
             overlay.innerHTML = `
                 <div class="bg-white dark:bg-dark-card p-6 rounded-2xl max-w-sm w-full shadow-2xl border border-blue-500 text-center animate-fade-in">
                     <i class="fa-solid fa-info-circle text-4xl text-blue-500 mb-4"></i>
-                    <p class="font-bold text-lg mb-6">${msg}</p>
-                    <button id="al-ok" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 transition text-white font-bold shadow-lg">OK</button>
+                    <p class="font-bold text-lg mb-6" style="white-space:pre-line">${msg}</p>
+                    <button class="al-ok w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 transition text-white font-bold shadow-lg">OK</button>
                 </div>`;
             document.body.appendChild(overlay);
-            document.getElementById('al-ok').onclick = () => overlay.remove();
+            overlay.querySelector('.al-ok').onclick = () => overlay.remove();
         };
 
         // --- v2.18 : bandeau hors-ligne discret (appareil sans réseau, ou base injoignable au chargement) ---
@@ -2202,7 +2205,40 @@
                     { ico: '💀', lbl: 'Pire scénario', rule: 'worst' }
                 ];
                 const list = defs.map(d => { const r = d.mean ? mkMean() : mk(d.rule); return { ico: d.ico, lbl: d.lbl, pos: posOf(r.adj), prob: r.prob, lines: r.lines }; });
-                return { pos0, allUp, list, modelOk: !!model };
+                // v2.22 : place la PLUS PROBABLE à l'issue des 10 jours — simulation de 1500 combinaisons de
+                // résultats (barème FFHG complet, prolongations incluses). Le % d'un scénario précis est
+                // forcément minuscule : c'est UNE combinaison exacte parmi des milliers ; la vraie question
+                // est « où finit-on le plus souvent » — la simulation y répond.
+                let dist = null, trend = null;
+                try {
+                    if (model && allUp.length) {
+                        const N = 1500, counts = {};
+                        const prCache = new Map();
+                        const prOf = (m) => { if (!prCache.has(m.id)) prCache.set(m.id, pred(m)); return prCache.get(m.id); };
+                        for (let s = 0; s < N; s++) {
+                            const adj = new Map(); const add = (t, n) => { const k = normalize(t); adj.set(k, (adj.get(k) || 0) + n); };
+                            for (const m of allUp) {
+                                const pr = prOf(m);
+                                if (!pr || pr.pHomeWin == null || pr.pAwayWin == null) { const w2 = rankIdx(m.homeTeam) <= rankIdx(m.awayTeam) ? m.homeTeam : m.awayTeam; add(w2, 3); continue; }
+                                const r = Math.random(), pH = pr.pHomeWin, pA = pr.pAwayWin, pT = pr.pT != null ? pr.pT : 0, otH = pr.otHc != null ? pr.otHc : 0.5;
+                                if (r < pH) { add(m.homeTeam, 3); }
+                                else if (r < pH + pA) { add(m.awayTeam, 3); }
+                                else if (r < pH + pA + pT * otH) { add(m.homeTeam, 2); add(m.awayTeam, 1); }
+                                else if (r < pH + pA + pT) { add(m.homeTeam, 1); add(m.awayTeam, 2); }
+                                else { const w2 = rankIdx(m.homeTeam) <= rankIdx(m.awayTeam) ? m.homeTeam : m.awayTeam; add(w2, 3); }
+                            }
+                            const pp = posOf(adj); if (pp != null) counts[pp] = (counts[pp] || 0) + 1;
+                        }
+                        const tot = Object.keys(counts).reduce((s, p) => s + counts[p], 0) || 1;
+                        dist = Object.keys(counts).map(Number).sort((a, b) => counts[b] - counts[a]).map(p => ({ pos: p, pct: Math.round(counts[p] * 100 / tot) }));
+                        // v2.22 : tendance claire — % de monter d'au moins une place, de garder la place, de descendre
+                        const cUp = Object.keys(counts).filter(p => Number(p) < pos0 + 1).reduce((s, p) => s + counts[p], 0);
+                        const cSame = counts[pos0 + 1] || 0;
+                        const cDown = Object.keys(counts).filter(p => Number(p) > pos0 + 1).reduce((s, p) => s + counts[p], 0);
+                        trend = { up: Math.round(cUp * 100 / tot), same: Math.round(cSame * 100 / tot), down: Math.round(cDown * 100 / tot) };
+                    }
+                } catch (e) { dist = null; }
+                return { pos0, allUp, list, dist, trend, modelOk: !!model };
             } catch (e) { return null; }
         }
         // v2.21 : scénarios des concurrents — l'impact des prochains matchs des autres équipes sur la position des Lynx
@@ -2228,7 +2264,13 @@
                     const lines = sc.lines.map(lineHtml).join('');
                     return `<div class="py-2 border-t border-gray-100 dark:border-gray-700/60 flex items-start gap-2"><span class="text-base leading-5">${sc.ico}</span><div class="flex-1 min-w-0"><div class="flex items-baseline gap-2 flex-wrap"><span class="text-xs font-bold">${sc.lbl}</span><span class="text-sm font-black ${cls}">→ Lynx ${posTxt(sc.pos)}</span>${probTxt(sc.prob)}</div><div class="mt-0.5 grid grid-cols-1 sm:grid-cols-2 gap-x-3 text-[10px] text-gray-400 leading-snug">${lines}</div></div></div>`;
                 }).join('');
-                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4><p class="text-[10px] text-gray-400 text-center mb-2">Place des Lynx en combinant tous les résultats — actuellement ${pos0 + 1}${pos0 === 0 ? 'ᵉʳ' : 'e'} · calculé par le modèle du site · 🎯 = issue favorable aux Lynx dès qu'elle a au moins 1 chance sur 3</p>${rowsHtml}</div>`;
+                const distLine = (data.dist && data.dist.length)
+                    ? `<div class="text-center text-[11px] font-bold">📈 Dans 10 jours, place la plus probable : <span class="text-lynx-red">${posTxt(data.dist[0].pos)}</span> <span class="text-gray-400 font-normal">(${data.dist[0].pct} % des simulations)</span></div>`
+                    : '';
+                const trendLine = data.trend
+                    ? `<div class="text-center text-[11px] font-bold mt-0.5">⬆️ Monter : <span class="text-green-600 dark:text-green-400">${data.trend.up} %</span> <span class="text-gray-300 dark:text-gray-600">·</span> ➡️ Garder : <span class="text-gray-600 dark:text-gray-300">${data.trend.same} %</span> <span class="text-gray-300 dark:text-gray-600">·</span> ⬇️ Descendre : <span class="text-red-500 dark:text-red-400">${data.trend.down} %</span></div>`
+                    : '';
+                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4>${distLine}${trendLine}<details class="mt-2"><summary class="text-[10px] font-bold text-gray-400 hover:text-lynx-red cursor-pointer text-center uppercase tracking-wider select-none">▼ Voir le détail des 5 scénarios</summary><p class="text-[10px] text-gray-400 text-center mt-2 mb-1">Actuellement ${pos0 + 1}${pos0 === 0 ? 'ᵉʳ' : 'e'} · le % d'un scénario = chance de CETTE combinaison exacte de résultats (d'où des petits chiffres) · 🎯 = issue favorable aux Lynx dès qu'elle a au moins 1 chance sur 3</p>${rowsHtml}</details></div>`;
             } catch (e) { el.innerHTML = ''; }
         }
 
@@ -3244,10 +3286,19 @@
             if (next && next.id) { const row = container.querySelector(`[data-id="${next.id}"]`); if (row) row.setAttribute('data-next-match', '1'); }
         }
         function scrollSectionToNextMatch(sectionId) {
+            // v2.22 : le match cible se place SOUS les barres collantes (en-tête + filtres) au lieu de
+            // disparaître dessous — et une 2e passe recale le défilement après le rendu/chargement des logos.
             try {
                 const sec = document.getElementById(sectionId);
                 const row = sec ? sec.querySelector('[data-next-match="1"]') : null;
-                if (row) setTimeout(() => row.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+                if (!row) return;
+                const go = () => {
+                    try {
+                        const top = row.getBoundingClientRect().top + window.scrollY - 130;
+                        window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+                    } catch (e) { row.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                };
+                setTimeout(go, 150); setTimeout(go, 900);
             } catch (e) {}
         }
 
@@ -4114,8 +4165,8 @@
             const allTags = [...new Set(sorted.flatMap(n => newsTagsOf(n)))].slice(0, 14);
             const tagChips = (allTags.length > 1 || newsTagFilter) ? `<div class="flex items-center gap-2 mb-3 overflow-x-auto"><span class="text-[10px] font-bold text-gray-400 shrink-0"><i class="fa-solid fa-hashtag"></i></span><div class="flex gap-1.5 flex-nowrap">` + allTags.map(t => `<button class="news-tag-chip px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap transition ${newsTagFilter && newsTagFilter.toLowerCase() === t.toLowerCase() ? 'bg-lynx-red text-white shadow' : 'bg-white dark:bg-gray-700 text-gray-500 hover:text-lynx-red'}" data-tag="${xmlEsc(t)}">${xmlEsc(t)}</button>`).join('') + `</div></div>` : '';
             const latest = limited[0] || null; const others = latest ? limited.slice(1) : [];
-            let html = chips + readChips + tagChips + (latest ? `<div class="news-card-featured open-news-modal" data-id="${latest.id}"><div class="absolute top-0 right-0 p-2 flex flex-col items-end gap-2"><i class="fa-solid fa-bullhorn text-4xl opacity-50"></i><button class="share-news-btn text-gray-500 hover:text-lynx-red font-bold text-xs" data-id="${latest.id}" title="Partager / publier sur les réseaux (tu choisis le réseau, rien n'est envoyé tout seul)"><i class="fa-solid fa-share-nodes"></i></button>${adm ? `<div class="flex gap-2"><button class="edit-news-btn text-gray-500 hover:text-blue-600 font-bold text-xs" data-id="${latest.id}" title="Modifier"><i class="fa-solid fa-pen"></i></button><button class="del-news-btn text-gray-500 hover:text-red-600 font-bold text-xs" data-id="${latest.id}" title="Supprimer"><i class="fa-solid fa-trash"></i></button></div>` : ''}</div><div class="text-[10px] uppercase font-bold opacity-80 mb-1">${isItemUnread(latest.id, latest.date) ? '<span class="text-lynx-red">● Non lu · </span>' : '<span class="opacity-50">✓ Lu · </span>'}${latest.kind === 'preview' ? '🔮 AVANT-MATCH · ' : latest.kind === 'result' ? '📊 RÉSUMÉ · ' : latest.kind === 'month' ? '📅 RÉCAP · ' : latest.kind === 'poule' ? '🏆 PANORAMA · ' : latest.kind === 'stats' ? '📈 STATS · ' : '📰 '}${new Date(latest.date).toLocaleDateString()}</div><h3 class="text-xl font-black mb-2 leading-tight">${latest.title}</h3><p class="text-sm opacity-90 line-clamp-2">${latest.content.substring(0, 100)}...</p><div class="mt-3 text-xs font-bold uppercase tracking-widest flex items-center gap-1">Lire plus <i class="fa-solid fa-arrow-right"></i></div></div>` : '');
-            if(others.length > 0) { html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">`; html += others.map(n => `<div class="news-card-normal open-news-modal" data-id="${n.id}"><div class="text-[10px] text-gray-400 font-bold">${isItemUnread(n.id, n.date) ? '<span class="text-lynx-red">●</span>' : '<span class="opacity-50">✓</span>'} ${n.kind === 'preview' ? '🔮 ' : n.kind === 'result' ? '📊 ' : n.kind === 'month' ? '📅 ' : n.kind === 'poule' ? '🏆 ' : n.kind === 'stats' ? '📈 ' : ''}${new Date(n.date).toLocaleDateString()}</div><h4 class="font-bold text-sm line-clamp-1">${n.title}</h4><button class="share-news-btn text-[10px] text-gray-400 hover:text-lynx-red font-bold" data-id="${n.id}" title="Partager / publier (tu choisis le réseau, rien n'est envoyé tout seul)">🔗 Partager</button>${adm ? `<div class="flex gap-2 mt-1"><button class="edit-news-btn text-[10px] text-gray-400 hover:text-blue-500 font-bold" data-id="${n.id}">✏️ Modifier</button><button class="del-news-btn text-[10px] text-gray-400 hover:text-red-500 font-bold" data-id="${n.id}">🗑️ Supprimer</button></div>` : ''}</div>`).join(''); html += `</div>`; } 
+            let html = chips + readChips + tagChips + (latest ? `<div class="news-card-featured open-news-modal" data-id="${latest.id}"><div class="absolute top-0 right-0 p-2 pointer-events-none"><i class="fa-solid fa-bullhorn text-4xl opacity-30"></i></div><div class="text-[10px] uppercase font-bold opacity-80 mb-1">${isItemUnread(latest.id, latest.date) ? '<span class="text-lynx-red">● Non lu · </span>' : '<span class="opacity-50">✓ Lu · </span>'}${latest.kind === 'preview' ? '🔮 AVANT-MATCH · ' : latest.kind === 'result' ? '📊 RÉSUMÉ · ' : latest.kind === 'month' ? '📅 RÉCAP · ' : latest.kind === 'poule' ? '🏆 PANORAMA · ' : latest.kind === 'stats' ? '📈 STATS · ' : '📰 '}${new Date(latest.date).toLocaleDateString()}</div><h3 class="text-xl font-black mb-2 leading-tight">${latest.title}</h3><p class="text-sm opacity-90 line-clamp-2">${latest.content.substring(0, 100)}...</p><div class="mt-3 pt-2 border-t border-white/25 flex items-center gap-3"><span class="text-xs font-bold uppercase tracking-widest flex items-center gap-1">Lire plus <i class="fa-solid fa-arrow-right"></i></span><span class="flex-1"></span><button class="share-news-btn text-white/80 hover:text-white font-bold text-xs" data-id="${latest.id}" title="Partager / publier sur les réseaux (tu choisis le réseau, rien n'est envoyé tout seul)"><i class="fa-solid fa-share-nodes"></i></button>${adm ? `<button class="edit-news-btn text-white/80 hover:text-white font-bold text-xs" data-id="${latest.id}" title="Modifier"><i class="fa-solid fa-pen"></i></button><button class="del-news-btn text-white/80 hover:text-white font-bold text-xs" data-id="${latest.id}" title="Supprimer"><i class="fa-solid fa-trash"></i></button>` : ''}</div></div>` : '');
+            if(others.length > 0) { html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">`; html += others.map(n => `<div class="news-card-normal open-news-modal" data-id="${n.id}"><div class="text-[10px] text-gray-400 font-bold">${isItemUnread(n.id, n.date) ? '<span class="text-lynx-red">●</span>' : '<span class="opacity-50">✓</span>'} ${n.kind === 'preview' ? '🔮 ' : n.kind === 'result' ? '📊 ' : n.kind === 'month' ? '📅 ' : n.kind === 'poule' ? '🏆 ' : n.kind === 'stats' ? '📈 ' : ''}${new Date(n.date).toLocaleDateString()}</div><h4 class="font-bold text-sm line-clamp-1">${n.title}</h4><div class="flex items-center gap-2 mt-1 text-[10px]"><button class="share-news-btn text-gray-400 hover:text-lynx-red font-bold" data-id="${n.id}" title="Partager / publier (tu choisis le réseau, rien n'est envoyé tout seul)">🔗</button>${adm ? `<button class="edit-news-btn text-gray-400 hover:text-blue-500 font-bold" data-id="${n.id}" title="Modifier">✏️</button><button class="del-news-btn text-gray-400 hover:text-red-500 font-bold" data-id="${n.id}" title="Supprimer">🗑️</button>` : ''}</div></div>`).join(''); html += `</div>`; } 
             if(newsFilter === 'all' && filtered.length > 12 && !newsShowAll) html += `<button id="news-show-all" class="w-full py-2 mt-2 text-xs font-bold text-gray-400 hover:text-lynx-red transition"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Afficher les ${filtered.length} articles — historique complet</button>`;
             container.innerHTML = html;
             document.querySelectorAll('.news-filter-chip').forEach(b => { b.onclick = () => { newsFilter = b.dataset.f; renderNews(); }; });
@@ -7575,6 +7626,7 @@ ${cards}
                             if (sc && sc.list) {
                                 const fmtSc = (s) => { const pT = s.prob != null ? ` (≈ ${s.prob < 0.01 ? '<1' : Math.round(s.prob * 100)} % de chances)` : ''; const det = s.lines.map(l => l.mean ? `${l.m.homeTeam} - ${l.m.awayTeam} : ${(l.eH == null ? '?' : l.eH.toFixed(1))}-${(l.eA == null ? '?' : l.eA.toFixed(1))} pts attendus` : `${l.m.homeTeam} - ${l.m.awayTeam} : victoire de ${l.w}${l.ot ? ' après prolongation (2 pts - 1 pt)' : ''}`).join(' ; '); return `${s.lbl}${pT} : Lynx ${s.pos == null ? '?' : s.pos + (s.pos === 1 ? 'er' : 'e')} — ${det}`; };
                                 ctx += 'Scénarios calculés par le site pour les 10 prochains jours (modèle interne — chiffres exacts, reprends-les tels quels si tu les cites) :\n' + sc.list.map(fmtSc).map(x => '- ' + x).join('\n') + '\n';
+                                if (sc.dist && sc.dist.length) ctx += 'Place la PLUS PROBABLE des Lynx à l\'issue de ces 10 jours (simulation de 1500 combinaisons de résultats) : ' + sc.dist[0].pos + (sc.dist[0].pos === 1 ? 're' : 'e') + ' place (' + sc.dist[0].pct + ' % des simulations)' + (sc.dist.length > 1 ? ' ; puis ' + sc.dist.slice(1, 4).map(d => d.pos + (d.pos === 1 ? 're' : 'e') + ' (' + d.pct + ' %)').join(', ') : '') + (sc.trend ? '. Tendance : monter ' + sc.trend.up + ' %, garder la place ' + sc.trend.same + ' %, descendre ' + sc.trend.down + ' %' : '') + '.\n';
                             }
                         } catch (e) {}
                         // v2.22 : classement du site (position, points, forme) autour des Lynx — pour une vraie analyse
@@ -8304,6 +8356,7 @@ ${cards}
             let liveClock = null, liveClockTimer = null; // v2.22 : chrono qui avance entre les relevés
             let liveFirstPoll = true, livePrev = null, liveFilter = 'all', liveErrCount = 0, liveTitleTimer = null, livePunchBusy = false, liveDetectTried = false;
             let liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false, maxTemps: 0, perEnded: new Set() };
+            let liveFfhgDone = false, liveFfhgCheckedAt = 0; // v2.22 : la liste officielle FFHG (etat = T) fait foi sur la fin d'un match jamais clôturé dans le flux
             let liveFastUntil = 0; // v2.18 : poll rapide (5 s) jusqu'à cette échéance quand une action vient d'être détectée
             let liveLastPoll = 0, liveChecking = false; // v2.18 : anti-chevauchement de relevés + rythme adaptatif
             const livePunchlines = [];
@@ -9101,6 +9154,13 @@ ${cards}
                     // v2.22 : on archive même SANS événement (score, tiers, joueur du match) — un rapport
                     // partiel valait mieux que pas de rapport (la base live restait vide). Retourne true/false.
                     if (!db || fbLoadFailed || !st) return false;
+                    // v2.22 : date fiable — le flux des VIEUX matchs ne donne pas la date_rencontre ; on la
+                    // récupère dans la liste officielle FFHG par n° de rencontre (sinon le rapport part à la
+                    // date du jour et ne se raccroche jamais au bon match du calendrier).
+                    const rnR = liveMatchNum((document.getElementById('live-match-url') || {}).value || '');
+                    if (rnR && (!st.dateRencontre || !/(\d{2})[\/\-.](\d{2})[\/\-.](\d{4})/.test(String(st.dateRencontre)))) {
+                        try { const rowR = (await ffhgSeasonRows()).find(x => String(x.id) === String(rnR)); if (rowR && rowR.date) st.dateRencontre = new Date(rowR.date).toLocaleDateString('fr-FR'); } catch (e) {}
+                    }
                     const evs = st.events || [];
                     const { dIso, id } = liveResultId(st);
                     const per = livePeriodsFrom({ ...st, events: evs });
@@ -9264,6 +9324,20 @@ ${cards}
                     try { data = JSON.parse(raw); } catch (err) { throw new Error('flux illisible'); }
                     if (!data || !Array.isArray(data.scores)) throw new Error('structure du flux inattendue');
                     const st = liveParse(data, raw);
+                    // v2.22 : la liste officielle FFHG dit « terminé » même quand le flux n'est jamais clôturé
+                    if (!st.finished && liveFfhgDone) st.finished = true;
+                    // v2.22 : match non clôturé par la FFHG — à partir de 60 min de chrono, re-vérification
+                    // de la liste officielle toutes les 5 min (etat = T = terminé, même si le flux ne le dit pas)
+                    if (!st.finished && (st.ms || 0) >= 3600000 && Date.now() - liveFfhgCheckedAt > 300e3) {
+                        liveFfhgCheckedAt = Date.now();
+                        ffhgSeasonRows().then(rows => {
+                            const row1 = rows.find(x => String(x.id) === String(id));
+                            if (row1 && row1.done && livePrev && !livePrev.finished) {
+                                liveFfhgDone = true;
+                                [400, 1500, 3000, 6000].forEach(d => setTimeout(() => { try { liveCheck(); } catch (e) {} }, d));
+                            }
+                        }).catch(() => {});
+                    }
                     try { liveCapturePhotos(data); } catch (e) {}
                     // v2.14 : la clé tirs_aux_but (fusillade) est encore mystérieuse — on en garde un échantillon pour la découvrir
                     try { if (Array.isArray(data.tirs_aux_but) && data.tirs_aux_but.length) localStorage.setItem('lynx_tab_sample', JSON.stringify(data.tirs_aux_but).slice(0, 4000)); } catch (e) {}
@@ -9394,9 +9468,12 @@ ${cards}
                             } else if (liveSeen.wasPaused === true && !st.paused && !st.finished && liveSeen.started) {
                                 livePlay('periodStart', true);
                                 const nextP = Math.min(3, Math.round(st.ms / 1200000)) + 1;
-                                liveNotify(nextP > 3 ? '⚔️ Prolongation !' : '▶ Reprise', nextP > 3 ? 'On part en prolongation...' : 'Début du tiers-temps ' + nextP, 'live-res');
-                                if (nextP > 3) liveEnqueueAnim(liveAnimProl(st));
-                                else liveEnqueueAnim(liveAnimReprise(st, nextP));
+                                // v2.22 : prolongation UNIQUEMENT si score égal — à 3-1 (ou tout score non nul)
+                                // à la fin du temps réglementaire, une prolongation est impossible, le match est fini.
+                                const otReal = nextP > 3 && st.homeScore === st.awayScore;
+                                liveNotify(otReal ? '⚔️ Prolongation !' : '▶ Reprise', otReal ? 'On part en prolongation...' : 'Début du tiers-temps ' + Math.min(nextP, 3), 'live-res');
+                                if (otReal) liveEnqueueAnim(liveAnimProl(st));
+                                else liveEnqueueAnim(liveAnimReprise(st, Math.min(nextP, 3)));
                             }
                         }
                         liveSeen.wasPaused = st.paused ? livePausePlausible(st) : false; // v2.18 : pauses implausibles ignorées (anti-spam reprise)
@@ -9500,6 +9577,18 @@ ${cards}
                 if (!id) { appAlert('Mets le numéro du match FFHG (ex : 82022) ou son URL complète.'); return; }
                 if (Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (err) {} }
                 liveSaveSettings();
+                // v2.22 : la FFHG ne clôture pas toujours un match tout de suite (MVP saisis après coup) —
+                // le flux peut ne JAMAIS passer est_terminee. On vérifie la liste officielle : un match
+                // d'AVANT aujourd'hui marqué « terminé » (etat = T) est considéré terminé dès le départ.
+                liveFfhgDone = false;
+                ffhgSeasonRows().then(rows => {
+                    const row0 = rows.find(x => String(x.id) === String(id));
+                    const rd0 = row0 && row0.date ? new Date(row0.date).getTime() : 0;
+                    if (row0 && row0.done && rd0 && rd0 < new Date().setHours(0, 0, 0, 0)) {
+                        liveFfhgDone = true;
+                        [400, 1500, 3000, 6000].forEach(d => setTimeout(() => { try { liveCheck(); } catch (e) {} }, d));
+                    }
+                }).catch(() => {});
                 liveFirstPoll = true; livePrev = null; liveErrCount = 0;
                 liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false, maxTemps: 0, perEnded: new Set() }; // v2.22 : maxTemps/perEnded réinitialisés (leur absence faisait planter chaque relevé dès 20 min de jeu → plus aucun archivage)
                 livePunchlines.length = 0;
@@ -9535,7 +9624,8 @@ ${cards}
                 // v2.17 : l'enregistrement du résultat dans le calendrier est réservé à l'Admin déverrouillé
                 if(!adminCanEdit()) { appAlert('🔒 Enregistrement du résultat réservé à l\'Admin — déverrouille l\'Admin.'); return; }
                 const st = livePrev;
-                if (!st || !st.finished) { appAlert('Le match doit être terminé pour enregistrer le résultat.'); return; }
+                if (!st || (!st.finished && !liveFfhgDone)) { appAlert('Le match doit être terminé pour enregistrer le résultat.'); return; }
+                if (!st.finished && liveFfhgDone) st.finished = true; // v2.22 : terminé officiellement (liste FFHG) même si le flux n'est pas clôturé
                 const btnSaveL = document.getElementById('live-save-result');
                 if (btnSaveL && btnSaveL.dataset.busy === '1') return; // v2.22 : anti double-clic
                 if (btnSaveL) { btnSaveL.dataset.busy = '1'; btnSaveL.disabled = true; }
@@ -9560,8 +9650,9 @@ ${cards}
                         : { date: dIso, season: activeSeason, poule: 'B', homeTeam: st.homeName, awayTeam: st.awayName, scoreHome: st.homeScore, scoreAway: st.awayScore, isProl: liveHadOvertime(st), type: 'Saison' };
                     await setDoc(doc(db, `${basePath}/calendar/${exist ? exist.id : id}`), m, { merge: true });
                     const repOk = await liveSaveReport(st); // même identifiant → le rapport live est rattaché au match du calendrier
-                    if (!repOk) appAlert('⚠️ Le résultat est dans le calendrier, mais le rapport live (déroulé) n\'a pas pu être écrit en base — vérifie ta connexion et réessaie.');
-                    appAlert(exist ? '✅ Résultat enregistré : le match EXISTANT du calendrier a été mis à jour (aucun doublon créé).' : '✅ Résultat enregistré dans le calendrier ! Article publié dès que les données sont complètes (stats joueurs), au plus tard 48h.');
+                    // v2.22 : UN SEUL message — deux alertes créées d'affilée partageaient le même id de bouton
+                    // OK, la seconde (celle visible) n'avait aucun gestionnaire → OK inclicable, écran bloqué.
+                    appAlert((exist ? '✅ Résultat enregistré : le match EXISTANT du calendrier a été mis à jour (aucun doublon créé).' : '✅ Résultat enregistré dans le calendrier ! Article publié dès que les données sont complètes (stats joueurs), au plus tard 48h.') + (repOk ? '' : '\n\n⚠️ Le rapport live (déroulé) n\'a pas pu être écrit en base — vérifie ta connexion et réessaie.'));
                     lastResultCheck = 0; setTimeout(() => { try { autoResultCheck(); } catch(e) { console.warn('article auto live', e); } }, 6000);
                     populateLiveReplay(); // v2.22 : la liste « Revivre un match » est rafraîchie tout de suite
                 } catch (e) { console.warn('save live result', e); appAlert('Enregistrement impossible : ' + (e && e.message ? e.message : 'erreur')); }
@@ -9656,7 +9747,11 @@ ${cards}
                         let data = null; try { data = JSON.parse(raw); } catch (e) { continue; }
                         if (!data || !Array.isArray(data.scores)) continue;
                         const st = liveParse(data, raw);
-                        if (!st || !st.finished) continue;
+                        if (!st) continue;
+                        // v2.22 : la liste officielle dit « terminé » (etat = T) même quand le flux n'est
+                        // jamais clôturé (MVP saisis après coup) — elle fait foi sur la fin du match.
+                        if (!st.finished && r.done) st.finished = true;
+                        if (!st.finished) continue;
                         st.dateRencontre = new Date(t).toLocaleDateString('fr-FR');
                         const rid = liveResultId(st).id;
                         if (have.has(rid)) { doneMap[String(r.id)] = 1; continue; } // déjà archivé (suivi en direct)
