@@ -151,6 +151,13 @@
         body.jersey-movember .news-card-featured { background-image: linear-gradient(to bottom right, #0E7490, #164E63); }
         html:not(.dark) body.jersey-away { background-color: #374151 !important; }
         body.jersey-away .news-card-featured { background-image: linear-gradient(to bottom right, #7F1D1D, #111827); }
+        /* v2.22 : lisibilité du maillot alternatif — cartes presque opaques sur le fond anthracite (le blanc 70 % donnait des cartes grises illisibles) */
+        html:not(.dark) body.jersey-away .bg-white\/70, html:not(.dark) body.jersey-away .bg-white\/80 { background-color: rgba(255,255,255,0.95) !important; }
+        html:not(.dark) body.jersey-away .bg-white\/70.backdrop-blur-lg, html:not(.dark) body.jersey-away .bg-white\/80.backdrop-blur-lg { backdrop-filter: none; }
+        /* v2.22 : anneaux et contours d accent thémés (encadré du tiers en cours, focus…) */
+        body.jersey-pink .ring-lynx-red { --tw-ring-color: #DB2777; }
+        body.jersey-movember .ring-lynx-red { --tw-ring-color: #0E7490; }
+        body.jersey-xmas .ring-lynx-red { --tw-ring-color: #15803D; }
         /* v2.22-b : touches maillot — points de forme thémés, motifs de maille, bandeau d épaule, dégradés */
         body.jersey-movember .form-win { width: 20px; height: 13px; border-radius: 0; box-shadow: none; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><path fill="%230E7490" d="M12 7C11 4 8 3 6 4 4 5 2 4 2.5 2.5 3 1 5 .5 7 1.5 9.5 2.8 11 4.5 12 6 13 4.5 14.5 2.8 17 1.5 19 .5 21 1 21.5 2.5 22 4 20 5 18 4 16 3 13 4 12 7Z"/></svg>') center / contain no-repeat, #0E749000; }
         body.jersey-pink .form-win { width: 13px; height: 17px; border-radius: 0; box-shadow: none; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 16"><path fill="%23DB2777" d="M6 1C8 1 9 2.5 9 4 9 6 7 8 6 9.5 5 8 3 6 3 4 3 2.5 4 1 6 1ZM4.5 9 2.5 15 4.5 14 6 10.5 7.5 14 9.5 15 7.5 9Z"/></svg>') center / contain no-repeat, #DB277700; }
@@ -1637,11 +1644,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
+        const mistralApiKey = "";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -8834,7 +8841,10 @@ ${cards}
                     const s = ev.temps || 0;
                     if (s < 1200) perT[0][side]++; else if (s < 2400) perT[1][side]++; else if (s < 3600) perT[2][side]++; else perP[side]++;
                 });
-                const showP = perP[0] + perP[1] > 0 || st.isOvertime || st.tab;
+                // v2.22 : la colonne Prol. n existe que si des buts y ont été marqués ou qu une prolongation est EN COURS —
+                // plus de « Prol. 0-0 » fantôme sur un match gagné dans le temps réglementaire (une prolongation sans
+                // but n existe pas au hockey : si personne ne marque, il y a des tirs au but, donc des buts en prol.)
+                const showP = perP[0] + perP[1] > 0 || (!st.finished && (st.isOvertime || st.tab));
                 let cur = 0;
                 if (!st.finished && !st.paused) cur = (st.tab || st.isOvertime) ? 4 : Math.min(3, st.period || 1);
                 const chip = (lbl, txt, hi) => '<div class="flex-1 py-1.5 rounded-lg text-center ' + (hi ? 'bg-gray-100 dark:bg-gray-800 ring-2 ring-lynx-red' : 'bg-gray-100 dark:bg-gray-800') + '"><div class="text-[9px] font-bold text-gray-400 uppercase tracking-wide">' + lbl + '</div><div class="text-xs md:text-sm font-black tabular-nums">' + txt + '</div></div>';
@@ -9369,7 +9379,7 @@ ${cards}
                     const per = livePeriodsFrom({ ...st, events: evs });
                     const rep = {
                         date: dIso, season: activeSeason, savedAt: new Date().toISOString(),
-                        homeTeam: st.homeName, awayTeam: st.awayName,
+                        homeTeam: st.homeName || 'Domicile', awayTeam: st.awayName || 'Visiteur',
                         scoreHome: st.homeScore, scoreAway: st.awayScore,
                         isProl: liveHadOvertime(st), finished: !!st.finished,
                         ffhgId: liveMatchNum(document.getElementById('live-match-url').value) || null,
@@ -9380,13 +9390,17 @@ ${cards}
                         // v2.22 : gardiens alignés (pour les stats auto) + gardien qui encaisse sur chaque but
                         gksH: (st.players || []).filter(p => p && p.isGoalie && p.teamId === st.homeId).map(p => p.name),
                         gksA: (st.players || []).filter(p => p && p.isGoalie && p.teamId === st.awayId).map(p => p.name),
-                        events: evs.map(ev => ({ t: ev.temps || 0, time: ev.time, ty: ev.type, side: ev.teamId === st.homeId ? 'H' : (ev.teamId === st.awayId ? 'A' : '?'), who: ev.detail || '', sit: ev.sit || null, ice: (ev.onIce && ev.onIce.length) ? ev.onIce.join(', ') : null, gkA: ev.gkA || null }))
+                        events: evs.map(ev => ({ t: ev.temps || 0, time: ev.time || '', ty: ev.type || '', side: ev.teamId === st.homeId ? 'H' : (ev.teamId === st.awayId ? 'A' : '?'), who: ev.detail || '', sit: ev.sit || null, ice: (ev.onIce && ev.onIce.length) ? ev.onIce.join(', ') : null, gkA: ev.gkA || null }))
                     };
-                    await setDoc(doc(db, `${basePath}/live-reports/${id}`), rep, { merge: true });
+                    // v2.22 : AUCUN champ undefined ne doit partir en base — Firestore rejette tout le document
+                    // sinon (c était la cause des rapports non écrits). Nettoyage récursif avant l écriture.
+                    const cleanU = (o) => { if (Array.isArray(o)) return o.map(cleanU); if (o && typeof o === 'object') { const r = {}; Object.keys(o).forEach(k => { if (o[k] !== undefined) r[k] = cleanU(o[k]); }); return r; } return o; };
+                    await setDoc(doc(db, `${basePath}/live-reports/${id}`), cleanU(rep), { merge: true });
+                    try { window._liveSaveErr = ''; } catch (e2) {}
                     // v2.22 : le rapport vient de changer — les stats joueurs/gardiens dérivées sont recalculées au prochain rendu
                     try { _pstatsCache = { t: 0, v: null }; } catch (e) {}
                     return true;
-                } catch (e) { console.warn('liveSaveReport', e); return false; }
+                } catch (e) { console.warn('liveSaveReport', e); try { window._liveSaveErr = (e && e.message) || String(e); } catch (e2) {} return false; }
             }
             // v2.18 : scouting auto — à la fin d'un match suivi, on archive l'effectif vu en direct
             // (joueurs alignés, buts du match, tirs reçus/arrêts des gardiens) dans la collection « scout »,
@@ -9855,7 +9869,7 @@ ${cards}
                     const repOk = await liveSaveReport(st); // même identifiant → le rapport live est rattaché au match du calendrier
                     // v2.22 : UN SEUL message — deux alertes créées d'affilée partageaient le même id de bouton
                     // OK, la seconde (celle visible) n'avait aucun gestionnaire → OK inclicable, écran bloqué.
-                    appAlert((exist ? '✅ Résultat enregistré : le match EXISTANT du calendrier a été mis à jour (aucun doublon créé).' : '✅ Résultat enregistré dans le calendrier ! Article publié dès que les données sont complètes (stats joueurs), au plus tard 48h.') + (repOk ? '' : '\n\n⚠️ Le rapport live (déroulé) n\'a pas pu être écrit en base — vérifie ta connexion et réessaie.'));
+                    appAlert((exist ? '✅ Résultat enregistré : le match EXISTANT du calendrier a été mis à jour (aucun doublon créé).' : '✅ Résultat enregistré dans le calendrier ! Article publié dès que les données sont complètes (stats joueurs), au plus tard 48h.') + (repOk ? '' : '\n\n⚠️ Le rapport live (déroulé) n\'a pas pu être écrit en base — ' + (window._liveSaveErr ? 'cause signalée : ' + String(window._liveSaveErr).slice(0, 160) : 'vérifie ta connexion et réessaie.')));
                     lastResultCheck = 0; setTimeout(() => { try { autoResultCheck(); } catch(e) { console.warn('article auto live', e); } }, 6000);
                     populateLiveReplay(); // v2.22 : la liste « Revivre un match » est rafraîchie tout de suite
                 } catch (e) { console.warn('save live result', e); appAlert('Enregistrement impossible : ' + (e && e.message ? e.message : 'erreur')); }
