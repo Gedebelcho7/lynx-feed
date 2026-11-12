@@ -8845,12 +8845,18 @@ ${cards}
                 // v2.22 : la colonne Prol. n existe que si des buts y ont été marqués ou qu une prolongation est EN COURS —
                 // plus de « Prol. 0-0 » fantôme sur un match gagné dans le temps réglementaire (une prolongation sans
                 // but n existe pas au hockey : si personne ne marque, il y a des tirs au but, donc des buts en prol.)
-                // v2.22 : la colonne Prol. suit la VÉRITÉ du match — la liste officielle FFHG (victoire_par = PRL ou TAB)
-                // dit si la prolongation a vraiment eu lieu ; le flux des vieux matchs omet souvent son but (mort subite =
-                // exactement 1 but, pour le vainqueur — valable aussi pour la fusillade, comptée +1 au score final).
-                let ffhgProl = false;
-                try { ffhgProl = typeof liveFfhgVp === 'string' && (liveFfhgVp === 'PRL' || liveFfhgVp === 'TAB'); } catch (e) {}
-                if (st.finished && ffhgProl && perP[0] + perP[1] === 0) perP[(st.homeScore || 0) > (st.awayScore || 0) ? 0 : 1] = 1;
+                // v2.22 : la liste officielle FFHG (victoire_par) tranche, mais le score reste le juge de paix —
+                // 'S' = temps réglementaire : tout temps > 3600 du flux est du bruit, Prol. masquée ;
+                // 'PRL'/'TAB' = prolongation/fusillade : le but manquant n est reconstitué (1 au vainqueur, mort
+                // subite) QUE si les événements du flux ne couvrent pas le score final — jamais fabriqué sinon.
+                let vp = '';
+                try { vp = typeof liveFfhgVp === 'string' ? liveFfhgVp : ''; } catch (e) {}
+                if (st.finished && vp === 'S') { perP[0] = 0; perP[1] = 0; }
+                else if (st.finished && (vp === 'PRL' || vp === 'TAB')) {
+                    const evtH = perT[0][0] + perT[1][0] + perT[2][0] + perP[0];
+                    const evtA = perT[0][1] + perT[1][1] + perT[2][1] + perP[1];
+                    if (perP[0] + perP[1] === 0 && (evtH < (st.homeScore || 0) || evtA < (st.awayScore || 0))) perP[(st.homeScore || 0) > (st.awayScore || 0) ? 0 : 1] = 1;
+                }
                 const showP = perP[0] + perP[1] > 0 || (!st.finished && (st.isOvertime || st.tab));
                 let cur = 0;
                 if (!st.finished && !st.paused) cur = (st.tab || st.isOvertime) ? 4 : Math.min(3, st.period || 1);
@@ -9348,7 +9354,11 @@ ${cards}
             // une dérive du chrono au-delà de 60 min en fin de temps réglementaire marquait le match
             // « victoire en prolongation » à tort dans le rapport et le calendrier.
             function liveHadOvertime(st) {
-                return !!((st.events || []).some(ev => ev.type === 'BUT' && (ev.temps || 0) > 3600) || st.tab || (typeof liveFfhgVp === 'string' && (liveFfhgVp === 'PRL' || liveFfhgVp === 'TAB')));
+                // v2.22 : la liste officielle tranche — 'S' = JAMAIS de prolongation (le bruit du flux est ignoré),
+                // 'PRL'/'TAB' = prolongation avérée ; sans info officielle, on se fie aux événements du flux.
+                try { if (typeof liveFfhgVp === 'string' && liveFfhgVp === 'S') return false; } catch (e) {}
+                try { if (typeof liveFfhgVp === 'string' && (liveFfhgVp === 'PRL' || liveFfhgVp === 'TAB')) return true; } catch (e) {}
+                return !!((st.events || []).some(ev => ev.type === 'BUT' && (ev.temps || 0) > 3600) || st.tab);
             }
             // v2.18 : outil Admin de réparation d'un rapport live archivé (équipes inversées par le flux FFHG)
             async function populateFixRep() {
