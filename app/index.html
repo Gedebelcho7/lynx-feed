@@ -295,6 +295,8 @@
 
         <!-- HOME SECTION -->
         <section id="home-summary" class="main-content-section active">
+             <!-- v2.22 : bandeau hors ligne (rempli par offlineBanner) -->
+             <div id="offline-banner" class="hidden"></div>
              <!-- TICKET BANNER : billetterie ouverte (rempli par renderTicketBanner) -->
              <div id="ticket-banner" class="mb-6"></div>
              <!-- MATCH DAY HERO : bandeau jour/veille de match (rempli par renderMatchDay) -->
@@ -308,6 +310,9 @@
                      <div class="mt-2 text-sm font-semibold opacity-90"><i class="fa-solid fa-trophy text-2xl mr-2 animate-bounce-slow"></i> Félicitations !</div>
                  </div>
              </div>
+
+             <!-- v2.22 : résumé en une phrase en tête d'accueil -->
+             <div id="home-oneliner" class="hidden mb-4"></div>
 
              <!-- v2.19 : accueil réorganisé — matchs et classement en premier (mobile sans scroll interminable), actus à droite calées sur la hauteur de la rangée matchs -->
              <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:grid-flow-row-dense">
@@ -2209,7 +2214,7 @@
                 // résultats (barème FFHG complet, prolongations incluses). Le % d'un scénario précis est
                 // forcément minuscule : c'est UNE combinaison exacte parmi des milliers ; la vraie question
                 // est « où finit-on le plus souvent » — la simulation y répond.
-                let dist = null, trend = null;
+                let dist = null, trend = null, watch = null;
                 try {
                     if (model && allUp.length) {
                         const N = 1500, counts = {};
@@ -2236,9 +2241,40 @@
                         const cSame = counts[pos0 + 1] || 0;
                         const cDown = Object.keys(counts).filter(p => Number(p) > pos0 + 1).reduce((s, p) => s + counts[p], 0);
                         trend = { up: Math.round(cUp * 100 / tot), same: Math.round(cSame * 100 / tot), down: Math.round(cDown * 100 / tot) };
+                        // v2.22 : matchs a surveiller — pour chaque match des autres equipes, place MOYENNE des Lynx
+                        // si le domicile gagne (fixe) vs si le visiteur gagne (fixe), les autres matchs etant simules ;
+                        // ecart = influence du match, favori = vainqueur le plus favorable aux Lynx.
+                        watch = [];
+                        const others = allUp.filter(m => !isLynxM(m));
+                        const avgPosFix = (fixM, fixW) => {
+                            let sum = 0, n = 0;
+                            for (let s2 = 0; s2 < 200; s2++) {
+                                const adj = new Map(); const add2 = (t, x) => { const k = normalize(t); adj.set(k, (adj.get(k) || 0) + x); };
+                                for (const m2 of allUp) {
+                                    if (m2 === fixM) { add2(fixW, 3); continue; }
+                                    const pr = prOf(m2);
+                                    if (!pr || pr.pHomeWin == null || pr.pAwayWin == null) { const w2 = rankIdx(m2.homeTeam) <= rankIdx(m2.awayTeam) ? m2.homeTeam : m2.awayTeam; add2(w2, 3); continue; }
+                                    const r = Math.random(), pH = pr.pHomeWin, pA = pr.pAwayWin, pT = pr.pT != null ? pr.pT : 0, otH = pr.otHc != null ? pr.otHc : 0.5;
+                                    if (r < pH) { add2(m2.homeTeam, 3); }
+                                    else if (r < pH + pA) { add2(m2.awayTeam, 3); }
+                                    else if (r < pH + pA + pT * otH) { add2(m2.homeTeam, 2); add2(m2.awayTeam, 1); }
+                                    else if (r < pH + pA + pT) { add2(m2.homeTeam, 1); add2(m2.awayTeam, 2); }
+                                    else { const w2 = rankIdx(m2.homeTeam) <= rankIdx(m2.awayTeam) ? m2.homeTeam : m2.awayTeam; add2(w2, 3); }
+                                }
+                                const pp = posOf(adj); if (pp != null) { sum += pp; n++; }
+                            }
+                            return n ? sum / n : null;
+                        };
+                        for (const m of others) {
+                            const aH = avgPosFix(m, m.homeTeam), aA = avgPosFix(m, m.awayTeam);
+                            if (aH == null || aA == null) continue;
+                            const fav = aH <= aA ? m.homeTeam : m.awayTeam;
+                            watch.push({ m, fav, aFav: Math.min(aH, aA), aOther: Math.max(aH, aA), swing: Math.abs(aH - aA) });
+                        }
+                        watch.sort((a, b) => b.swing - a.swing);
                     }
-                } catch (e) { dist = null; }
-                return { pos0, allUp, list, dist, trend, modelOk: !!model };
+                } catch (e) { dist = null; watch = null; }
+                return { pos0, allUp, list, dist, trend, watch, modelOk: !!model };
             } catch (e) { return null; }
         }
         // v2.21 : scénarios des concurrents — l'impact des prochains matchs des autres équipes sur la position des Lynx
@@ -2247,9 +2283,24 @@
             if (!el) return;
             try {
                 const data = computeScenariosData(matches, ranking);
-                if (!data) { el.innerHTML = ''; return; }
-                const pos0 = data.pos0, list = data.list;
+                const pos0 = data ? data.pos0 : Math.max(0, ranking.findIndex(r => normalize(r.team).includes('valence')));
                 const posTxt = (p) => p == null ? '?' : p + (p === 1 ? 'ᵉʳ' : 'e');
+                // v2.22 : résumé en une phrase en tête d'accueil — position, points, prochain match, match à surveiller
+                try {
+                    const ol = document.getElementById('home-oneliner');
+                    if (ol) {
+                        const bits = [];
+                        const lynxRow = ranking.find(r => normalize(r.team).includes('valence'));
+                        if (lynxRow) bits.push(`📍 <span class="font-bold">${posTxt(pos0 + 1)}</span> · ${lynxRow.pts} pts`);
+                        const nm = (matches || []).filter(m => m.season === activeSeason && (!m.type || m.type === 'Saison') && !isMatchFinished(m) && (normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence'))).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+                        if (nm) { const d = new Date(nm.date); const ds = isNaN(d) ? '' : d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }); const home = normalize(nm.homeTeam).includes('valence'); bits.push(`🗓️ ${ds} — ${home ? 'à domicile contre' : 'en déplacement à'} <span class="font-bold">${home ? nm.awayTeam : nm.homeTeam}</span>`); }
+                        if (data && data.watch && data.watch.length) { const w = data.watch[0]; bits.push(`👁️ À surveiller : ${w.m.homeTeam} – ${w.m.awayTeam} (victoire <span class="font-bold text-green-600 dark:text-green-400">${w.fav}</span> favorable)`); }
+                        if (bits.length) { ol.classList.remove('hidden'); ol.innerHTML = `<div class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-3 rounded-xl shadow-lg border-l-4 border-lynx-dark dark:border-gray-500 text-center text-xs md:text-sm text-gray-600 dark:text-gray-300">${bits.join(' <span class="text-gray-300 dark:text-gray-600">·</span> ')}</div>`; }
+                        else ol.classList.add('hidden');
+                    }
+                } catch (e) {}
+                if (!data) { el.innerHTML = ''; return; }
+                const list = data.list;
                 const probTxt = (pr) => pr == null ? '' : ` <span class="text-[10px] font-bold text-gray-400">(≈ ${pr < 0.01 ? '&lt; 1' : Math.round(pr * 100)} % de chances)</span>`;
                 const lineHtml = (l) => {
                     if (l.mean) {
@@ -2268,9 +2319,16 @@
                     ? `<div class="text-center text-[11px] font-bold">📈 Dans 10 jours, place la plus probable : <span class="text-lynx-red">${posTxt(data.dist[0].pos)}</span> <span class="text-gray-400 font-normal">(${data.dist[0].pct} % des simulations)</span></div>`
                     : '';
                 const trendLine = data.trend
-                    ? `<div class="text-center text-[11px] font-bold mt-0.5">⬆️ Monter : <span class="text-green-600 dark:text-green-400">${data.trend.up} %</span> <span class="text-gray-300 dark:text-gray-600">·</span> ➡️ Garder : <span class="text-gray-600 dark:text-gray-300">${data.trend.same} %</span> <span class="text-gray-300 dark:text-gray-600">·</span> ⬇️ Descendre : <span class="text-red-500 dark:text-red-400">${data.trend.down} %</span></div>`
+                    ? `<div class="text-center text-[11px] font-bold mt-0.5">⬆️ Monter : <span class="text-green-600 dark:text-green-400">${data.trend.up} %</span> <span class="text-gray-300 dark:text-gray-600">·</span> ➡️ Garder : <span class="text-gray-600 dark:text-gray-300">${data.trend.same} %</span> <span class="text-gray-300 dark:text-gray-600">·</span> ⬇️ Descendre : <span class="text-red-500 dark:text-red-400">${data.trend.down} %</span> <span class="text-gray-400 font-normal">(actuellement ${posTxt(pos0 + 1)})</span></div>`
                     : '';
-                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4>${distLine}${trendLine}<details class="mt-2"><summary class="text-[10px] font-bold text-gray-400 hover:text-lynx-red cursor-pointer text-center uppercase tracking-wider select-none">▼ Voir le détail des 5 scénarios</summary><p class="text-[10px] text-gray-400 text-center mt-2 mb-1">Actuellement ${pos0 + 1}${pos0 === 0 ? 'ᵉʳ' : 'e'} · le % d'un scénario = chance de CETTE combinaison exacte de résultats (d'où des petits chiffres) · 🎯 = issue favorable aux Lynx dès qu'elle a au moins 1 chance sur 3</p>${rowsHtml}</details></div>`;
+                const placesLine = (data.dist && data.dist.length > 1)
+                    ? `<div class="text-center text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">📊 Répartition : ${data.dist.slice(0, 4).sort((a, b) => a.pos - b.pos).map(d => `<span class="font-bold ${d.pos < pos0 + 1 ? 'text-green-600 dark:text-green-400' : d.pos === pos0 + 1 ? 'text-gray-600 dark:text-gray-300' : 'text-red-500 dark:text-red-400'}">${posTxt(d.pos)} ${d.pct} %</span>`).join(' <span class="text-gray-300 dark:text-gray-600">·</span> ')}</div>`
+                    : '';
+                const watchList = (data.watch || []).filter(w => w.swing >= 0.3).slice(0, 3);
+                const watchHtml = watchList.length
+                    ? `<details class="mt-2"><summary class="text-[10px] font-bold text-gray-400 hover:text-lynx-red cursor-pointer text-center uppercase tracking-wider select-none">👁️ Matchs à surveiller (${watchList.length})</summary><div class="mt-2 space-y-1.5">${watchList.map(w => { const dt = new Date(w.m.date); const ds = isNaN(dt) ? '' : dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }); const other = w.fav === w.m.homeTeam ? w.m.awayTeam : w.m.homeTeam; return `<div class="text-[10px] text-gray-500 dark:text-gray-400 leading-snug"><span class="font-bold text-gray-600 dark:text-gray-300">${w.m.homeTeam} – ${w.m.awayTeam}</span> <span class="text-gray-400">(${ds})</span> → victoire <span class="font-bold text-green-600 dark:text-green-400">${w.fav}</span> = la meilleure pour les Lynx <span class="text-gray-400">(place moyenne ${String(w.aFav.toFixed(1)).replace('.', ',')} contre ${String(w.aOther.toFixed(1)).replace('.', ',')} si ${other} gagne)</span></div>`; }).join('')}</div></details>`
+                    : '';
+                el.innerHTML = `<div class="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700"><h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 text-center uppercase tracking-wider">🎲 Scénarios (10 prochains jours)</h4>${distLine}${trendLine}${placesLine}${watchHtml}<details class="mt-2"><summary class="text-[10px] font-bold text-gray-400 hover:text-lynx-red cursor-pointer text-center uppercase tracking-wider select-none">▼ Voir le détail des 5 scénarios</summary><p class="text-[10px] text-gray-400 text-center mt-2 mb-1">Actuellement ${pos0 + 1}${pos0 === 0 ? 'ᵉʳ' : 'e'} · le % d'un scénario = chance de CETTE combinaison exacte de résultats (d'où des petits chiffres) · 🎯 = issue favorable aux Lynx dès qu'elle a au moins 1 chance sur 3</p>${rowsHtml}</details></div>`;
             } catch (e) { el.innerHTML = ''; }
         }
 
@@ -7263,12 +7321,57 @@ ${cards}
         // --- INIT & EVENTS ---
         const toggleModal = (id, show) => { const m=document.getElementById(id); show ? m.classList.remove('opacity-0','pointer-events-none') : m.classList.add('opacity-0','pointer-events-none'); };
         
+        // v2.22 : cache hors ligne — les données principales sont gardées en localStorage ; sans réseau (ou Firestore bloqué),
+        // l app s ouvre quand même sur la dernière copie, avec un bandeau « données au … »
+        let offlineMode = false, offlineAt = null, offlineSavedAt = 0, dataSeen = false;
+        const OFFLINE_KEY = 'lynx_offline_cache_v1';
+        function offlineSave() {
+            try {
+                const now = Date.now();
+                if (now - offlineSavedAt < 120000) return;
+                offlineSavedAt = now;
+                localStorage.setItem(OFFLINE_KEY, JSON.stringify({
+                    at: new Date().toISOString(),
+                    calendar: (allMatches || []).slice(0, 900),
+                    ranking: [...(rankingA || []), ...(rankingB || [])],
+                    players: (roster || []).slice(0, 100),
+                    goalies: (goalies || []).slice(0, 60),
+                    news: (newsList || []).slice(0, 60).map(a => ({ ...a, content: String(a.content || '').slice(0, 2000) }))
+                }));
+            } catch (e) {}
+        }
+        function offlineLoadIfDead() {
+            if (dataSeen) return;
+            try {
+                const raw = localStorage.getItem(OFFLINE_KEY);
+                if (!raw) return;
+                const p = JSON.parse(raw);
+                if (Array.isArray(p.calendar)) allMatches = p.calendar;
+                if (Array.isArray(p.ranking)) { rankingA = p.ranking.filter(r => r.poule === 'A'); rankingB = p.ranking.filter(r => r.poule === 'B'); }
+                if (Array.isArray(p.players)) roster = p.players;
+                if (Array.isArray(p.goalies)) goalies = p.goalies;
+                if (Array.isArray(p.news)) newsList = p.news;
+                offlineMode = true; offlineAt = p.at || null;
+                try { offlineBanner(); } catch (e) {}
+                scheduleUI();
+            } catch (e) {}
+        }
+        function offlineBanner() {
+            const el = document.getElementById('offline-banner'); if (!el) return;
+            if (!offlineMode) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+            const d = offlineAt ? new Date(offlineAt) : null;
+            const ds = d && !isNaN(d) ? d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'la visite précédente';
+            el.classList.remove('hidden');
+            el.innerHTML = `<div class="mb-6 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-xs font-semibold p-2.5 rounded-xl text-center">📡 Hors ligne — affichage des données du ${ds} (consultation seule ; tout se mettra à jour au retour du réseau)</div>`;
+        }
+
         function initListeners() {
             if(listenersInitialized) return; listenersInitialized = true;
-            onSnapshot(collection(db, `${basePath}/calendar`), (s) => { allMatches = s.docs.map(d=>({...d.data(), id:d.id})); scheduleUI(); });
-            onSnapshot(collection(db, `${basePath}/ranking`), (s) => { const d = s.docs.map(x=>x.data()); rankingA=d.filter(r=>r.poule==='A'); rankingB=d.filter(r=>r.poule==='B'); scheduleUI(); });
-            onSnapshot(collection(db, `${basePath}/players`), (s) => { roster = s.docs.map(d=>({...d.data(), id:d.id})); scheduleUI(); lastResultCheck = 0; setTimeout(() => { try { autoResultCheck(); } catch(e) {} }, 4000); }); // stats joueurs saisies → publie l'article en attente dans la foulée (délai anti-spam contourné)
-            onSnapshot(collection(db, `${basePath}/goalies`), (s) => { goalies = s.docs.map(d=>({...d.data(), id:d.id})); scheduleUI(); });
+            onSnapshot(collection(db, `${basePath}/calendar`), (s) => { allMatches = s.docs.map(d=>({...d.data(), id:d.id})); dataSeen = true; try { offlineSave(); } catch (e) {} if (offlineMode) { offlineMode = false; try { offlineBanner(); } catch (e) {} } scheduleUI(); });
+            setTimeout(() => { try { offlineLoadIfDead(); } catch (e) {} }, (navigator.onLine === false) ? 3000 : 8000); // v2.22 : sans nouvelle donnée sous ce délai → bascule sur le cache local
+            onSnapshot(collection(db, `${basePath}/ranking`), (s) => { const d = s.docs.map(x=>x.data()); rankingA=d.filter(r=>r.poule==='A'); rankingB=d.filter(r=>r.poule==='B'); dataSeen = true; try { offlineSave(); } catch (e) {} scheduleUI(); });
+            onSnapshot(collection(db, `${basePath}/players`), (s) => { roster = s.docs.map(d=>({...d.data(), id:d.id})); dataSeen = true; try { offlineSave(); } catch (e) {} scheduleUI(); lastResultCheck = 0; setTimeout(() => { try { autoResultCheck(); } catch(e) {} }, 4000); }); // stats joueurs saisies → publie l'article en attente dans la foulée (délai anti-spam contourné)
+            onSnapshot(collection(db, `${basePath}/goalies`), (s) => { goalies = s.docs.map(d=>({...d.data(), id:d.id})); dataSeen = true; try { offlineSave(); } catch (e) {} scheduleUI(); });
             onSnapshot(collection(db, `${basePath}/league-players`), (s) => { leaguePlayers = s.docs.map(d=>d.data()); scheduleUI(); });
             onSnapshot(collection(db, `${basePath}/league-goalies`), (s) => { leagueGoalies = s.docs.map(d=>d.data()); scheduleUI(); });
             onSnapshot(doc(db, `${basePath}/logos/main`), (docSnap) => { if (docSnap.exists()) teamLogos = docSnap.data().map || {}; scheduleUI(); });
@@ -7322,7 +7425,7 @@ ${cards}
             let ppInit = false;
             onSnapshot(doc(db, `${basePath}/settings/player-photos`), (d) => { const ppTxt = d.exists() ? (d.data().text || '') : ''; playerPhotos = parsePlayerPhotos(ppTxt); if (!ppInit) { ppInit = true; const ppTa = document.getElementById('player-photos-text'); if (ppTa) ppTa.value = ppTxt; } scheduleUI(); });
             onSnapshot(doc(db, `${basePath}/settings/bot`), (docSnap) => { if(docSnap.exists()) botSettings = docSnap.data(); else botSettings = { tone: 'fan' }; scheduleUI(); }); 
-            onSnapshot(collection(db, `${basePath}/news`), (s) => { const nd = s.docs.map(d=>({...d.data(), id:d.id})); try { notifyNewArticles(nd); } catch(e) {} newsList = nd; scheduleUI(); try { renderArticleControls(); } catch(e) {} try { maybeAutoPublishRss(); } catch(e) {} });
+            onSnapshot(collection(db, `${basePath}/news`), (s) => { const nd = s.docs.map(d=>({...d.data(), id:d.id})); dataSeen = true; try { offlineSave(); } catch (e) {} try { notifyNewArticles(nd); } catch(e) {} newsList = nd; scheduleUI(); try { renderArticleControls(); } catch(e) {} try { maybeAutoPublishRss(); } catch(e) {} });
             onSnapshot(collection(db, `${basePath}/context`), (s) => { knowledgeBase = s.docs.map(d=>({...d.data(), id:d.id})); scheduleUI(); });
             // (Pronos du public supprimés : plus d'écoute ni de saisie ; les anciennes données restent purgables/exportables via l'onglet Base de données)
             onSnapshot(collection(db, `${basePath}/bot-history`), (s) => { botHistory = s.docs.map(d=>({...d.data(), id:d.id})).sort((a,b)=>new Date(b.date)-new Date(a.date)); scheduleUI(); });
@@ -7626,7 +7729,7 @@ ${cards}
                             if (sc && sc.list) {
                                 const fmtSc = (s) => { const pT = s.prob != null ? ` (≈ ${s.prob < 0.01 ? '<1' : Math.round(s.prob * 100)} % de chances)` : ''; const det = s.lines.map(l => l.mean ? `${l.m.homeTeam} - ${l.m.awayTeam} : ${(l.eH == null ? '?' : l.eH.toFixed(1))}-${(l.eA == null ? '?' : l.eA.toFixed(1))} pts attendus` : `${l.m.homeTeam} - ${l.m.awayTeam} : victoire de ${l.w}${l.ot ? ' après prolongation (2 pts - 1 pt)' : ''}`).join(' ; '); return `${s.lbl}${pT} : Lynx ${s.pos == null ? '?' : s.pos + (s.pos === 1 ? 'er' : 'e')} — ${det}`; };
                                 ctx += 'Scénarios calculés par le site pour les 10 prochains jours (modèle interne — chiffres exacts, reprends-les tels quels si tu les cites) :\n' + sc.list.map(fmtSc).map(x => '- ' + x).join('\n') + '\n';
-                                if (sc.dist && sc.dist.length) ctx += 'Place la PLUS PROBABLE des Lynx à l\'issue de ces 10 jours (simulation de 1500 combinaisons de résultats) : ' + sc.dist[0].pos + (sc.dist[0].pos === 1 ? 're' : 'e') + ' place (' + sc.dist[0].pct + ' % des simulations)' + (sc.dist.length > 1 ? ' ; puis ' + sc.dist.slice(1, 4).map(d => d.pos + (d.pos === 1 ? 're' : 'e') + ' (' + d.pct + ' %)').join(', ') : '') + (sc.trend ? '. Tendance : monter ' + sc.trend.up + ' %, garder la place ' + sc.trend.same + ' %, descendre ' + sc.trend.down + ' %' : '') + '.\n';
+                                if (sc.dist && sc.dist.length) ctx += 'Place la PLUS PROBABLE des Lynx à l\'issue de ces 10 jours (simulation de 1500 combinaisons de résultats) : ' + sc.dist[0].pos + (sc.dist[0].pos === 1 ? 're' : 'e') + ' place (' + sc.dist[0].pct + ' % des simulations)' + (sc.dist.length > 1 ? ' ; puis ' + sc.dist.slice(1, 4).map(d => d.pos + (d.pos === 1 ? 're' : 'e') + ' (' + d.pct + ' %)').join(', ') : '') + (sc.trend ? '. Tendance : monter ' + sc.trend.up + ' %, garder la place ' + sc.trend.same + ' %, descendre ' + sc.trend.down + ' %' : '') + (sc.watch && sc.watch.length ? '. Matchs des autres équipes à surveiller : ' + sc.watch.slice(0, 2).map(w => w.m.homeTeam + ' – ' + w.m.awayTeam + ' (une victoire de ' + w.fav + ' est la plus favorable aux Lynx)').join(' ; ') : '') + '.\n';
                             }
                         } catch (e) {}
                         // v2.22 : classement du site (position, points, forme) autour des Lynx — pour une vraie analyse
