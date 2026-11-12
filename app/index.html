@@ -1644,11 +1644,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "mstrl_YrujuVF7QQ2YfLzXfURY05Rsrkw5uP9K_0154kT";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const mistralApiKey = "";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -3256,11 +3256,9 @@
                 const lynxHome = normalize(m.homeTeam).includes('valence');
                 const my = lynxHome ? m.scoreHome : m.scoreAway, opp = lynxHome ? m.scoreAway : m.scoreHome;
                 const verdict = my > opp ? { txt: 'VICTOIRE', cls: 'bg-green-500' } : (my < opp ? { txt: 'DÉFAITE', cls: 'bg-red-500' } : { txt: 'NUL', cls: 'bg-gray-500' });
-                // v2.22 : perT lu dans les DEUX formats — ancien (tableau de paires) et nouveau ({H:[…],A:[…]}) ;
-                // reconverti en paires pour le rendu existant
-                const perTRaw = rep.perT || [];
-                const perT = Array.isArray(perTRaw) ? perTRaw : [0, 1, 2].map(i => [(perTRaw.H || [])[i] || 0, (perTRaw.A || [])[i] || 0]);
-                const tiers = perT.length ? `<div class="flex justify-center gap-2 mt-3 flex-wrap">` + [[0, 'T1'], [1, 'T2'], [2, 'T3']].map(p => `<span class="text-[10px] font-bold bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-1">${p[1]} <span class="text-lynx-red">${(perT[p[0]] || [0, 0])[0]}-${(perT[p[0]] || [0, 0])[1]}</span></span>`).join('') + (rep.isProl ? `<span class="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full px-2 py-1">prolong.</span>` : '') + `</div>` : '';
+                const perT = rep.perT || [];
+                const perPair = (x) => { if (Array.isArray(x)) return [Number(x[0]) || 0, Number(x[1]) || 0]; const s = String(x || '').split('-'); return [Number(s[0]) || 0, Number(s[1]) || 0]; }; // v2.22 : accepte l'ancien format [1,0] et le nouveau « 1-0 »
+                const tiers = perT.length ? `<div class="flex justify-center gap-2 mt-3 flex-wrap">` + [[0, 'T1'], [1, 'T2'], [2, 'T3']].map(p => `<span class="text-[10px] font-bold bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-1">${p[1]} <span class="text-lynx-red">${perPair(perT[p[0]])[0]}-${perPair(perT[p[0]])[1]}</span></span>`).join('') + (rep.isProl ? `<span class="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full px-2 py-1">prolong.</span>` : '') + `</div>` : '';
                 const lynxSide = lynxHome ? 'H' : 'A';
                 // v2.21 : timeline du match — frise des buts et pénalités depuis le rapport live
                 let tl = '';
@@ -8569,7 +8567,7 @@ ${cards}
             let liveClock = null, liveClockTimer = null; // v2.22 : chrono qui avance entre les relevés
             let liveFirstPoll = true, livePrev = null, liveFilter = 'all', liveErrCount = 0, liveTitleTimer = null, livePunchBusy = false, liveDetectTried = false;
             let liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false, maxTemps: 0, perEnded: new Set() };
-            let liveFfhgDone = false, liveFfhgCheckedAt = 0; // v2.22 : la liste officielle FFHG (etat = T) fait foi sur la fin d'un match jamais clôturé dans le flux
+            let liveFfhgDone = false, liveFfhgCheckedAt = 0, liveFfhgVp = ''; // v2.22 : la liste officielle FFHG (etat = T) fait foi sur la fin d'un match jamais clôturé dans le flux ; vp = victoire_par (PRL/TAB) pour les vraies prolongations
             let liveFastUntil = 0; // v2.18 : poll rapide (5 s) jusqu'à cette échéance quand une action vient d'être détectée
             let liveLastPoll = 0, liveChecking = false; // v2.18 : anti-chevauchement de relevés + rythme adaptatif
             const livePunchlines = [];
@@ -8847,6 +8845,12 @@ ${cards}
                 // v2.22 : la colonne Prol. n existe que si des buts y ont été marqués ou qu une prolongation est EN COURS —
                 // plus de « Prol. 0-0 » fantôme sur un match gagné dans le temps réglementaire (une prolongation sans
                 // but n existe pas au hockey : si personne ne marque, il y a des tirs au but, donc des buts en prol.)
+                // v2.22 : la colonne Prol. suit la VÉRITÉ du match — la liste officielle FFHG (victoire_par = PRL ou TAB)
+                // dit si la prolongation a vraiment eu lieu ; le flux des vieux matchs omet souvent son but (mort subite =
+                // exactement 1 but, pour le vainqueur — valable aussi pour la fusillade, comptée +1 au score final).
+                let ffhgProl = false;
+                try { ffhgProl = typeof liveFfhgVp === 'string' && (liveFfhgVp === 'PRL' || liveFfhgVp === 'TAB'); } catch (e) {}
+                if (st.finished && ffhgProl && perP[0] + perP[1] === 0) perP[(st.homeScore || 0) > (st.awayScore || 0) ? 0 : 1] = 1;
                 const showP = perP[0] + perP[1] > 0 || (!st.finished && (st.isOvertime || st.tab));
                 let cur = 0;
                 if (!st.finished && !st.paused) cur = (st.tab || st.isOvertime) ? 4 : Math.min(3, st.period || 1);
@@ -9344,16 +9348,7 @@ ${cards}
             // une dérive du chrono au-delà de 60 min en fin de temps réglementaire marquait le match
             // « victoire en prolongation » à tort dans le rapport et le calendrier.
             function liveHadOvertime(st) {
-                // v2.22 : garde-fou mathématique — une prolongation n existe que si le score est ÉGAL à la fin du
-                // temps réglementaire. Un événement fantôme au-delà de 60 min (ou un drapeau tab du flux) ne peut
-                // plus écrire un faux « (Pr.) » dans le rapport et le calendrier (cas Valence–Nantes 3-1).
-                try {
-                    const evs = (st.events || []).filter(ev => ev.type === 'BUT');
-                    const g60 = [0, 0];
-                    evs.forEach(ev => { if ((ev.temps || 0) <= 3600) { const side = ev.teamId === st.homeId ? 0 : (ev.teamId === st.awayId ? 1 : -1); if (side >= 0) g60[side]++; } });
-                    if (g60[0] !== g60[1]) return false;
-                    return !!(evs.some(ev => (ev.temps || 0) > 3600) || st.tab);
-                } catch (e) { return !!(st && st.tab); }
+                return !!((st.events || []).some(ev => ev.type === 'BUT' && (ev.temps || 0) > 3600) || st.tab || (typeof liveFfhgVp === 'string' && (liveFfhgVp === 'PRL' || liveFfhgVp === 'TAB')));
             }
             // v2.18 : outil Admin de réparation d'un rapport live archivé (équipes inversées par le flux FFHG)
             async function populateFixRep() {
@@ -9395,9 +9390,9 @@ ${cards}
                         scoreHome: st.homeScore, scoreAway: st.awayScore,
                         isProl: liveHadOvertime(st), finished: !!st.finished,
                         ffhgId: liveMatchNum(document.getElementById('live-match-url').value) || null,
-                        // v2.22 : perT en objet à deux tableaux plats — Firestore REFUSE les tableaux de tableaux
-                        // ([[0,0],[0,0],…]) et rejetait tout le rapport (cause du message « nested arrays »)
-                        perT: { H: per.perT.map(p => p[0]), A: per.perT.map(p => p[1]) }, perP: per.perP,
+                        // v2.22 : perT en chaînes « 1-0 » — Firestore INTERDIT les tableaux de tableaux (c'était la cause
+                        // de l'échec d'écriture de TOUS les rapports : « Nested arrays are not supported »)
+                        perT: per.perT.map(p => p[0] + '-' + p[1]), perP: per.perP,
                         shotsH: st.shotsH || 0, shotsA: st.shotsA || 0,
                         mvps: (st.mvps || []).map(x => x.name + ' (' + (x.teamId === st.homeId ? st.homeName : st.awayName) + ')'),
                         patinoire: st.patinoire || '', journee: st.journee || null, phase: st.phaseTxt || '',
@@ -9811,10 +9806,11 @@ ${cards}
                 // v2.22 : la FFHG ne clôture pas toujours un match tout de suite (MVP saisis après coup) —
                 // le flux peut ne JAMAIS passer est_terminee. On vérifie la liste officielle : un match
                 // d'AVANT aujourd'hui marqué « terminé » (etat = T) est considéré terminé dès le départ.
-                liveFfhgDone = false;
+                liveFfhgDone = false; liveFfhgVp = '';
                 ffhgSeasonRows().then(rows => {
                     const row0 = rows.find(x => String(x.id) === String(id));
                     const rd0 = row0 && row0.date ? new Date(row0.date).getTime() : 0;
+                    liveFfhgVp = (row0 && row0.vp) ? String(row0.vp) : ''; // v2.22 : victoire_par (PRL/TAB) = la prolongation a vraiment eu lieu
                     if (row0 && row0.done && rd0 && rd0 < new Date().setHours(0, 0, 0, 0)) {
                         liveFfhgDone = true;
                         [400, 1500, 3000, 6000].forEach(d => setTimeout(() => { try { liveCheck(); } catch (e) {} }, d));
@@ -10005,7 +10001,7 @@ ${cards}
                 try {
                     const perP = Array.isArray(r.perP) ? [r.perP[1] || 0, r.perP[0] || 0] : r.perP;
                     const patch = { homeTeam: r.awayTeam, awayTeam: r.homeTeam, scoreHome: r.scoreAway, scoreAway: r.scoreHome,
-                        perT: (r.perT && !Array.isArray(r.perT)) ? { H: (r.perT.A || []).slice(), A: (r.perT.H || []).slice() } : (r.perT || []).map(p => Array.isArray(p) ? [p[1], p[0]] : p), perP,
+                        perT: (r.perT || []).map(p => Array.isArray(p) ? [p[1], p[0]] : String(p).split('-').reverse().join('-')), perP,
                         shotsH: r.shotsA, shotsA: r.shotsH,
                         events: (r.events || []).map(ev => Object.assign({}, ev, { side: ev.side === 'H' ? 'A' : ev.side === 'A' ? 'H' : ev.side })),
                         mvps: (r.mvps || []).map(m => String(m).split(r.homeTeam).join('\u0001').split(r.awayTeam).join(r.homeTeam).split('\u0001').join(r.awayTeam)) };
