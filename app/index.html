@@ -151,6 +151,28 @@
         body.jersey-movember .news-card-featured { background-image: linear-gradient(to bottom right, #0E7490, #164E63); }
         html:not(.dark) body.jersey-away { background-color: #374151 !important; }
         body.jersey-away .news-card-featured { background-image: linear-gradient(to bottom right, #7F1D1D, #111827); }
+        /* v2.22-b : touches maillot — points de forme thémés, motifs de maille, bandeau d épaule, dégradés */
+        body.jersey-movember .form-win { width: 16px; height: 11px; border-radius: 0; box-shadow: none; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><path fill="%230E7490" d="M12 7C11 4 8 3 6 4 4 5 2 4 2.5 2.5 3 1 5 .5 7 1.5 9.5 2.8 11 4.5 12 6 13 4.5 14.5 2.8 17 1.5 19 .5 21 1 21.5 2.5 22 4 20 5 18 4 16 3 13 4 12 7Z"/></svg>') center / contain no-repeat, #0E749000; }
+        body.jersey-pink .form-win { width: 11px; height: 14px; border-radius: 0; box-shadow: none; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 16"><path fill="%23DB2777" d="M6 1C8 1 9 2.5 9 4 9 6 7 8 6 9.5 5 8 3 6 3 4 3 2.5 4 1 6 1ZM4.5 9 2.5 15 4.5 14 6 10.5 7.5 14 9.5 15 7.5 9Z"/></svg>') center / contain no-repeat, #DB277700; }
+        body.jersey-pink .form-loss { background-color: #9D174D; }
+        body.jersey-movember .form-loss { background-color: #B91C1C; }
+        body.jersey-xmas .form-win { background-color: #15803D; box-shadow: 0 0 4px #15803D; }
+        body.jersey-pink .bg-white\/70, body.jersey-pink .bg-white\/80 { background-image: radial-gradient(rgba(219,39,119,0.05) 1.5px, transparent 1.6px); background-size: 14px 14px; }
+        body.jersey-movember .bg-white\/70, body.jersey-movember .bg-white\/80 { background-image: repeating-linear-gradient(45deg, transparent 0 10px, rgba(14,116,144,0.04) 10px 12px); }
+        body.jersey-xmas .bg-white\/70, body.jersey-xmas .bg-white\/80 { background-image: radial-gradient(rgba(21,128,61,0.05) 1.5px, transparent 1.6px); background-size: 16px 16px; }
+        html:not(.dark) body.jersey-away .bg-white\/70, html:not(.dark) body.jersey-away .bg-white\/80 { background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(0,0,0,0.03) 6px 8px); }
+        body.jersey-pink::before, body.jersey-movember::before, body.jersey-xmas::before, body.jersey-away::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 7px; z-index: 80; pointer-events: none; }
+        body.jersey-pink::before { background-color: #DB2777; background-image: radial-gradient(circle, rgba(255,255,255,0.9) 1.3px, transparent 1.5px); background-size: 12px 7px; background-position: 0 3.5px; }
+        body.jersey-movember::before { background-color: #0E7490; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><path fill="white" d="M12 7C11 4 8 3 6 4 4 5 2 4 2.5 2.5 3 1 5 .5 7 1.5 9.5 2.8 11 4.5 12 6 13 4.5 14.5 2.8 17 1.5 19 .5 21 1 21.5 2.5 22 4 20 5 18 4 16 3 13 4 12 7Z"/></svg>'); background-size: 22px 11px; background-repeat: repeat-x; }
+        body.jersey-xmas::before { background-color: #B91C1C; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><path stroke="white" stroke-width="1.2" fill="none" d="M6 1v10M2 3l8 6M10 3 2 9"/></svg>'); background-size: 12px 7px; background-repeat: repeat-x; }
+        body.jersey-away::before { background-image: repeating-linear-gradient(90deg, #111827 0 14px, #1F2937 14px 28px); }
+        .jersey-strip-pink { background-color: #DB2777; } .jersey-strip-movember { background-color: #0E7490; } .jersey-strip-xmas { background-color: #14532D; } .jersey-strip-away { background-color: #111827; }
+        body.jersey-pink .bg-gradient-to-r.from-lynx-red { background-image: linear-gradient(to right, #DB2777, #9D174D); }
+        body.jersey-movember .bg-gradient-to-r.from-lynx-red { background-image: linear-gradient(to right, #0E7490, #155E75); }
+        body.jersey-xmas .bg-gradient-to-r.from-lynx-red { background-image: linear-gradient(to right, #B91C1C, #14532D); }
+        body.jersey-pink .bg-gradient-to-r.from-lynx-dark { background-image: linear-gradient(to right, #9D174D, #831843); }
+        body.jersey-movember .bg-gradient-to-r.from-lynx-dark { background-image: linear-gradient(to right, #155E75, #164E63); }
+        body.jersey-xmas .bg-gradient-to-r.from-lynx-dark { background-image: linear-gradient(to right, #14532D, #166534); }
         .news-card-normal { @apply bg-white dark:bg-dark-card border-l-4 border-gray-300 dark:border-gray-600 p-4 rounded-r-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer; }
 
         /* Bracket Styles */
@@ -7414,7 +7436,7 @@ ${cards}
                 const el = document.getElementById('jersey-banner');
                 if (el) {
                     if (t === 'classic') { el.classList.add('hidden'); el.innerHTML = ''; }
-                    else { el.classList.remove('hidden'); el.innerHTML = `<div class="mb-4 text-center text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">${JERSEY_LABELS[t] || ''}</div>`; }
+                    else { el.classList.remove('hidden'); el.innerHTML = `<div class="jersey-strip-${t} text-white text-center text-[11px] font-bold uppercase tracking-widest py-1.5 px-3 rounded-lg shadow mb-4">${JERSEY_LABELS[t] || ''}</div>`; }
                 }
             } catch (e) {}
         }
@@ -7718,7 +7740,7 @@ ${cards}
             // v2.19 : hashtags de partage (persistés dans settings/general)
             const stBtn = document.getElementById('btn-save-share-tags'); if (stBtn) stBtn.onclick = async () => { try { const v = (document.getElementById('admin-share-tags').value || '').trim(); shareTags = v || '#LynxDeValence #Hockey'; await setDoc(doc(db, `${basePath}/settings/general`), { shareTags }, { merge: true }); appAlert('✅ Hashtags de partage enregistrés : ' + shareTags); } catch (e) { appAlert('Impossible : ' + (e && e.message ? e.message : 'erreur')); } };
             // v2.22 : maillot du site — forçage manuel de la direction artistique
-            const jsSel0 = document.getElementById('admin-jersey-theme'); if (jsSel0) jsSel0.value = jerseyTheme;
+            const jsSel0 = document.getElementById('admin-jersey-theme'); if (jsSel0) { jsSel0.value = jerseyTheme; jsSel0.onchange = () => { try { jerseyTheme = jsSel0.value; applyJerseyTheme(); } catch (e) {} }; } // aperçu instantané au changement (sans enregistrer)
             const jsBtn = document.getElementById('btn-save-jersey'); if (jsBtn) jsBtn.onclick = async () => { try { const v = document.getElementById('admin-jersey-theme').value; jerseyTheme = v; applyJerseyTheme(); await setDoc(doc(db, `${basePath}/settings/general`), { jerseyTheme: v }, { merge: true }); appAlert('✅ Maillot du site enregistré : ' + (v === 'auto' ? 'automatique' : JERSEY_LABELS[v] || v)); } catch (e) { appAlert('Impossible : ' + (e && e.message ? e.message : 'erreur')); } };
 
             // ============ ARTICLES AUTO + RSS + NOTIFICATIONS ============
