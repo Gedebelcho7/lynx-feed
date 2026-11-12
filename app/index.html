@@ -133,6 +133,24 @@
         
         /* News Card */
         .news-card-featured { @apply bg-gradient-to-br from-lynx-red to-red-800 text-white rounded-xl p-6 shadow-lg transform hover:scale-[1.01] transition-all cursor-pointer relative overflow-hidden; }
+        /* v2.22 : thèmes maillot — la couleur d'accent du site suit le maillot porté (rose = octobre, vert = Noël, cyan = Movember, fond anthracite = alternatif extérieur) */
+        body.jersey-pink .text-lynx-red, body.jersey-pink .hover\:text-lynx-red:hover { color: #DB2777 !important; }
+        body.jersey-pink .bg-lynx-red { background-color: #DB2777 !important; }
+        body.jersey-pink .border-lynx-red { border-color: #DB2777 !important; }
+        body.jersey-pink .main-nav-tab.active { color: #DB2777; border-color: #DB2777; }
+        body.jersey-pink .news-card-featured { background-image: linear-gradient(to bottom right, #DB2777, #9D174D); }
+        body.jersey-xmas .text-lynx-red, body.jersey-xmas .hover\:text-lynx-red:hover { color: #15803D !important; }
+        body.jersey-xmas .bg-lynx-red { background-color: #15803D !important; }
+        body.jersey-xmas .border-lynx-red { border-color: #15803D !important; }
+        body.jersey-xmas .main-nav-tab.active { color: #15803D; border-color: #15803D; }
+        body.jersey-xmas .news-card-featured { background-image: linear-gradient(to bottom right, #B91C1C, #14532D); }
+        body.jersey-movember .text-lynx-red, body.jersey-movember .hover\:text-lynx-red:hover { color: #0E7490 !important; }
+        body.jersey-movember .bg-lynx-red { background-color: #0E7490 !important; }
+        body.jersey-movember .border-lynx-red { border-color: #0E7490 !important; }
+        body.jersey-movember .main-nav-tab.active { color: #0E7490; border-color: #0E7490; }
+        body.jersey-movember .news-card-featured { background-image: linear-gradient(to bottom right, #0E7490, #164E63); }
+        html:not(.dark) body.jersey-away { background-color: #374151 !important; }
+        body.jersey-away .news-card-featured { background-image: linear-gradient(to bottom right, #7F1D1D, #111827); }
         .news-card-normal { @apply bg-white dark:bg-dark-card border-l-4 border-gray-300 dark:border-gray-600 p-4 rounded-r-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer; }
 
         /* Bracket Styles */
@@ -295,8 +313,9 @@
 
         <!-- HOME SECTION -->
         <section id="home-summary" class="main-content-section active">
-             <!-- v2.22 : bandeau hors ligne (rempli par offlineBanner) -->
+             <!-- v2.22 : bandeau hors ligne (rempli par offlineBanner) + bandeau maillot (rempli par applyJerseyTheme) -->
              <div id="offline-banner" class="hidden"></div>
+             <div id="jersey-banner" class="hidden"></div>
              <!-- TICKET BANNER : billetterie ouverte (rempli par renderTicketBanner) -->
              <div id="ticket-banner" class="mb-6"></div>
              <!-- MATCH DAY HERO : bandeau jour/veille de match (rempli par renderMatchDay) -->
@@ -1352,7 +1371,7 @@
                 </div>
             </div>
 
-            <div id="tab-news" class="admin-tab-content space-y-4"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-4">Gérer les News</h3><form id="admin-news-form" class="space-y-3 border-b dark:border-gray-700 pb-4 mb-4"><input id="news-title" class="w-full p-2 border rounded dark:bg-gray-700 text-sm font-bold" placeholder="Titre" required><textarea id="news-content" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-24" placeholder="Contenu (Markdown)..." required></textarea><button type="submit" class="btn-primary w-full py-2 text-sm">Publier News</button></form><div class="flex gap-2 items-end border-b dark:border-gray-700 pb-4 mb-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">Hashtags par défaut (partage réseaux — articles &amp; presse)</label><input id="admin-share-tags" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700 font-bold" placeholder="#LynxDeValence #Hockey"></div><button id="btn-save-share-tags" class="btn-primary py-2 px-4 rounded text-sm font-bold whitespace-nowrap">Enregistrer</button></div><div class="border-b dark:border-gray-700 pb-4 mb-4"><div class="text-xs font-bold text-gray-500 mb-2">GÉNÉRATION AUTOMATIQUE</div><div class="grid grid-cols-2 md:grid-cols-3 gap-2"><button id="btn-gen-result-article" class="btn-primary py-2 text-sm">Article du dernier résultat</button><button id="btn-gen-preview-article" class="btn-primary py-2 text-sm bg-purple-600">Pronostic du prochain match</button><button id="btn-gen-month-article" class="btn-primary py-2 text-sm bg-amber-600">Récap du mois dernier</button><button id="btn-gen-poule-article" class="btn-primary py-2 text-sm bg-cyan-600">Panorama de la poule</button><button id="btn-export-rss" class="btn-primary py-2 text-sm bg-emerald-600">Exporter flux RSS (XML)</button><button id="btn-preview-rss" class="btn-primary py-2 text-sm bg-purple-500">Aperçu du flux</button><button id="btn-publish-rss" class="btn-primary py-2 text-sm bg-blue-600">Publier flux en ligne (GitHub)</button><button id="btn-check-gh-config" class="btn-primary py-2 text-sm bg-gray-600">Vérifier la config GitHub</button></div><label class="flex items-center gap-2 mt-2 text-xs font-bold text-gray-500 cursor-pointer"><input id="chk-draft-lock" type="checkbox" class="w-4 h-4 accent-amber-600" checked> Après publication d'un brouillon : verrouiller 7 jours ce type d'article (l'automatique ne refera pas un doublon — déverrouillable dans Dates &amp; verrous)</label><div class="border-t dark:border-gray-700 pt-3 mt-3"><div class="text-xs font-bold text-gray-500 mb-2">ARTICLE PERSONNALISÉ (IA)</div><textarea id="custom-article-prompt" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-16" placeholder="Sujet ou consigne — ex. « Portrait du gardien après ses 3 derniers matchs », « Annonce de la soirée des bénévoles »…"></textarea><button id="btn-gen-custom-article" class="btn-primary w-full py-2 text-sm bg-indigo-600 mt-2">✨ Générer avec l'IA (brouillon corrigeable)</button></div><p class="text-[10px] text-gray-400 mt-2 leading-relaxed">Les boutons génèrent un BROUILLON, jamais une publication directe : la fenêtre d'édition s'ouvre (titre, contenu, date, hashtags), tu corriges ce que tu veux puis « ✅ Publier » — ou tu fermes pour jeter le brouillon. L'article de résultat reste aussi publié automatiquement dès que les données du match sont complètes ; le pronostic la veille ; le récap mensuel au début du mois. Avec une clé Gemini renseignée, l'IA rédige à partir UNIQUEMENT des données du site (aucune invention possible) ; sans clé, un texte simple est généré. Le flux RSS exporté contient uniquement les actus du site (résultats, classements, pronostics des Lynx).</p><label class="flex items-center gap-2 mt-2 text-xs font-bold text-gray-500 cursor-pointer"><input id="chk-auto-publish-rss" type="checkbox" class="w-4 h-4 accent-red-600"> Publication automatique du flux en ligne dès qu'un article sort (l'app doit rester ouverte ; configure ghRssRepo + ghRssToken dans le code)</label><div id="rss-publish-status" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-1"></div></div><div id="admin-news-list" class="space-y-2 max-h-60 overflow-y-auto"></div></div></div>
+            <div id="tab-news" class="admin-tab-content space-y-4"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-4">Gérer les News</h3><form id="admin-news-form" class="space-y-3 border-b dark:border-gray-700 pb-4 mb-4"><input id="news-title" class="w-full p-2 border rounded dark:bg-gray-700 text-sm font-bold" placeholder="Titre" required><textarea id="news-content" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-24" placeholder="Contenu (Markdown)..." required></textarea><button type="submit" class="btn-primary w-full py-2 text-sm">Publier News</button></form><div class="flex gap-2 items-end border-b dark:border-gray-700 pb-4 mb-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">Hashtags par défaut (partage réseaux — articles &amp; presse)</label><input id="admin-share-tags" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700 font-bold" placeholder="#LynxDeValence #Hockey"></div><button id="btn-save-share-tags" class="btn-primary py-2 px-4 rounded text-sm font-bold whitespace-nowrap">Enregistrer</button></div><div class="flex gap-2 items-end border-b dark:border-gray-700 pb-4 mb-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">🎨 Maillot du site (direction artistique — appliqué chez tous les visiteurs)</label><select id="admin-jersey-theme" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700 font-bold"><option value="auto">Automatique (recommandé) — rose en octobre, moustaches en novembre, Noël en décembre, alternatif en déplacement</option><option value="classic">Maillot classique (blanc/rouge)</option><option value="away">Maillot alternatif (noir)</option><option value="pink">Maillot rose (Octobre Rose)</option><option value="movember">Maillot Movember</option><option value="xmas">Maillot de Noël</option></select></div><button id="btn-save-jersey" class="btn-primary py-2 px-4 rounded text-sm font-bold whitespace-nowrap">Enregistrer</button></div><div class="border-b dark:border-gray-700 pb-4 mb-4"><div class="text-xs font-bold text-gray-500 mb-2">GÉNÉRATION AUTOMATIQUE</div><div class="grid grid-cols-2 md:grid-cols-3 gap-2"><button id="btn-gen-result-article" class="btn-primary py-2 text-sm">Article du dernier résultat</button><button id="btn-gen-preview-article" class="btn-primary py-2 text-sm bg-purple-600">Pronostic du prochain match</button><button id="btn-gen-month-article" class="btn-primary py-2 text-sm bg-amber-600">Récap du mois dernier</button><button id="btn-gen-poule-article" class="btn-primary py-2 text-sm bg-cyan-600">Panorama de la poule</button><button id="btn-export-rss" class="btn-primary py-2 text-sm bg-emerald-600">Exporter flux RSS (XML)</button><button id="btn-preview-rss" class="btn-primary py-2 text-sm bg-purple-500">Aperçu du flux</button><button id="btn-publish-rss" class="btn-primary py-2 text-sm bg-blue-600">Publier flux en ligne (GitHub)</button><button id="btn-check-gh-config" class="btn-primary py-2 text-sm bg-gray-600">Vérifier la config GitHub</button></div><label class="flex items-center gap-2 mt-2 text-xs font-bold text-gray-500 cursor-pointer"><input id="chk-draft-lock" type="checkbox" class="w-4 h-4 accent-amber-600" checked> Après publication d'un brouillon : verrouiller 7 jours ce type d'article (l'automatique ne refera pas un doublon — déverrouillable dans Dates &amp; verrous)</label><div class="border-t dark:border-gray-700 pt-3 mt-3"><div class="text-xs font-bold text-gray-500 mb-2">ARTICLE PERSONNALISÉ (IA)</div><textarea id="custom-article-prompt" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-16" placeholder="Sujet ou consigne — ex. « Portrait du gardien après ses 3 derniers matchs », « Annonce de la soirée des bénévoles »…"></textarea><button id="btn-gen-custom-article" class="btn-primary w-full py-2 text-sm bg-indigo-600 mt-2">✨ Générer avec l'IA (brouillon corrigeable)</button></div><p class="text-[10px] text-gray-400 mt-2 leading-relaxed">Les boutons génèrent un BROUILLON, jamais une publication directe : la fenêtre d'édition s'ouvre (titre, contenu, date, hashtags), tu corriges ce que tu veux puis « ✅ Publier » — ou tu fermes pour jeter le brouillon. L'article de résultat reste aussi publié automatiquement dès que les données du match sont complètes ; le pronostic la veille ; le récap mensuel au début du mois. Avec une clé Gemini renseignée, l'IA rédige à partir UNIQUEMENT des données du site (aucune invention possible) ; sans clé, un texte simple est généré. Le flux RSS exporté contient uniquement les actus du site (résultats, classements, pronostics des Lynx).</p><label class="flex items-center gap-2 mt-2 text-xs font-bold text-gray-500 cursor-pointer"><input id="chk-auto-publish-rss" type="checkbox" class="w-4 h-4 accent-red-600"> Publication automatique du flux en ligne dès qu'un article sort (l'app doit rester ouverte ; configure ghRssRepo + ghRssToken dans le code)</label><div id="rss-publish-status" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-1"></div></div><div id="admin-news-list" class="space-y-2 max-h-60 overflow-y-auto"></div></div></div>
             <div id="tab-context" class="admin-tab-content space-y-4"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg"><h3 class="font-bold mb-2">Contexte IA</h3><form id="admin-context-form" class="space-y-3 border-b dark:border-gray-700 pb-4 mb-4"><input id="context-title" class="w-full p-2 border rounded dark:bg-gray-700 text-sm font-bold" placeholder="Titre" required><textarea id="context-content" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-32" placeholder="Info pour l'IA..." required></textarea><button type="submit" class="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded font-bold text-sm">Ajouter</button></form><div id="admin-context-list" class="space-y-2 max-h-60 overflow-y-auto mb-4"></div><div class="pt-4 border-t dark:border-gray-700"><input type="file" id="csv-upload-context" class="border p-2 w-full text-sm bg-white dark:bg-gray-700 rounded"><button id="btn-upload-csv-context" class="btn-primary mt-2 text-sm w-full">Importer Contexte</button><div id="status-context" class="text-xs text-gray-500 mt-1"></div></div></div></div>
             <div id="tab-config" class="admin-tab-content"><div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-4"><h3 class="font-bold mb-2">Liens Utiles</h3><div id="admin-links-list" class="space-y-2 mb-4"></div><form id="form-add-link" class="flex gap-2 items-end border-t pt-4 dark:border-gray-700 mb-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">Nom</label><input id="link-name" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700" required></div><div class="flex-1"><label class="text-xs font-bold text-gray-500">URL</label><input id="link-url" class="border p-2 w-full text-sm rounded bg-white dark:bg-gray-700" required></div><button type="submit" class="btn-primary py-2 px-4 rounded text-sm font-bold">Ajouter</button></form><div class="pt-4 border-t dark:border-gray-700"><input type="file" id="csv-upload-links" class="border p-2 w-full text-sm bg-white dark:bg-gray-700 rounded"><button id="btn-upload-csv-links" class="btn-primary mt-2 text-sm w-full">Importer Liens</button><div id="status-links" class="text-xs text-gray-500 mt-1"></div></div></div></div>
             <div id="tab-export" class="admin-tab-content space-y-4">
@@ -1587,11 +1606,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
+        const mistralApiKey = "";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -7365,9 +7384,45 @@ ${cards}
             el.innerHTML = `<div class="mb-6 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-xs font-semibold p-2.5 rounded-xl text-center">📡 Hors ligne — affichage des données du ${ds} (consultation seule ; tout se mettra à jour au retour du réseau)</div>`;
         }
 
+        // v2.22 : thèmes maillot — la direction artistique du site suit le maillot porté par l équipe.
+        // Auto : rose en octobre, moustaches en novembre, Noël en décembre, alternatif (noir) la veille et le jour
+        // d un match en extérieur, classique le reste du temps. L admin peut forcer n importe quel maillot.
+        let jerseyTheme = 'auto';
+        const JERSEY_LABELS = {
+            away: '🖤 Maillot alternatif — comme les Lynx en déplacement',
+            pink: '🎀 Octobre Rose — le site porte le maillot rose',
+            movember: '🥸 Movember — le site porte le maillot moustaches',
+            xmas: '🎄 Maillot de Noël — joyeuses fêtes du hockey'
+        };
+        function effectiveJersey() {
+            if (jerseyTheme !== 'auto') return jerseyTheme;
+            const mo = new Date().getMonth() + 1;
+            if (mo === 10) return 'pink';
+            if (mo === 12) return 'xmas';
+            if (mo === 11) return 'movember';
+            const now = Date.now();
+            const nx = (allMatches || []).filter(mm => mm.season === activeSeason && (!mm.type || mm.type === 'Saison') && !isMatchFinished(mm) && (normalize(mm.homeTeam).includes('valence') || normalize(mm.awayTeam).includes('valence'))).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+            if (nx) { const t = new Date(nx.date).getTime(); const away = !normalize(nx.homeTeam).includes('valence'); if (away && t - now < 36 * 3600 * 1000 && t + 3.5 * 3600 * 1000 > now) return 'away'; }
+            return 'classic';
+        }
+        function applyJerseyTheme() {
+            try {
+                const t = effectiveJersey();
+                const b = document.body;
+                ['jersey-classic', 'jersey-away', 'jersey-pink', 'jersey-xmas', 'jersey-movember'].forEach(c => b.classList.remove(c));
+                b.classList.add('jersey-' + t);
+                const el = document.getElementById('jersey-banner');
+                if (el) {
+                    if (t === 'classic') { el.classList.add('hidden'); el.innerHTML = ''; }
+                    else { el.classList.remove('hidden'); el.innerHTML = `<div class="mb-4 text-center text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">${JERSEY_LABELS[t] || ''}</div>`; }
+                }
+            } catch (e) {}
+        }
+        try { applyJerseyTheme(); } catch (e) {}
+
         function initListeners() {
             if(listenersInitialized) return; listenersInitialized = true;
-            onSnapshot(collection(db, `${basePath}/calendar`), (s) => { allMatches = s.docs.map(d=>({...d.data(), id:d.id})); dataSeen = true; try { offlineSave(); } catch (e) {} if (offlineMode) { offlineMode = false; try { offlineBanner(); } catch (e) {} } scheduleUI(); });
+            onSnapshot(collection(db, `${basePath}/calendar`), (s) => { allMatches = s.docs.map(d=>({...d.data(), id:d.id})); dataSeen = true; try { offlineSave(); } catch (e) {} if (offlineMode) { offlineMode = false; try { offlineBanner(); } catch (e) {} } scheduleUI(); try { applyJerseyTheme(); } catch (e) {} });
             setTimeout(() => { try { offlineLoadIfDead(); } catch (e) {} }, (navigator.onLine === false) ? 3000 : 8000); // v2.22 : sans nouvelle donnée sous ce délai → bascule sur le cache local
             onSnapshot(collection(db, `${basePath}/ranking`), (s) => { const d = s.docs.map(x=>x.data()); rankingA=d.filter(r=>r.poule==='A'); rankingB=d.filter(r=>r.poule==='B'); dataSeen = true; try { offlineSave(); } catch (e) {} scheduleUI(); });
             onSnapshot(collection(db, `${basePath}/players`), (s) => { roster = s.docs.map(d=>({...d.data(), id:d.id})); dataSeen = true; try { offlineSave(); } catch (e) {} scheduleUI(); lastResultCheck = 0; setTimeout(() => { try { autoResultCheck(); } catch(e) {} }, 4000); }); // stats joueurs saisies → publie l'article en attente dans la foulée (délai anti-spam contourné)
@@ -7412,6 +7467,9 @@ ${cards}
                     // v2.19 : hashtags de partage (articles + presse), éditables en Admin → News
                     if (typeof d.shareTags === 'string' && d.shareTags.trim()) shareTags = d.shareTags.trim();
                     const stIn = document.getElementById('admin-share-tags'); if (stIn && !stIn.value) stIn.value = shareTags;
+                    // v2.22 : maillot du site (direction artistique choisie en Admin, appliquée chez tous les visiteurs)
+                    if (typeof d.jerseyTheme === 'string' && ['auto', 'classic', 'away', 'pink', 'xmas', 'movember'].includes(d.jerseyTheme)) { jerseyTheme = d.jerseyTheme; try { applyJerseyTheme(); } catch (e) {} }
+                    const jsSel = document.getElementById('admin-jersey-theme'); if (jsSel) jsSel.value = jerseyTheme;
                     const cpTa = document.getElementById('custom-punchlines');
                     if (cpTa && !cpTa.value && customPunchlines.length) cpTa.value = customPunchlines.join('\n');
                 } 
@@ -7659,6 +7717,9 @@ ${cards}
             document.getElementById('admin-news-form').onsubmit = async (e) => { e.preventDefault(); const title = document.getElementById('news-title').value; const content = document.getElementById('news-content').value; if(title && content) { await setDoc(doc(collection(db, `${basePath}/news`)), { title, content, date: new Date().toISOString() }); e.target.reset(); } };
             // v2.19 : hashtags de partage (persistés dans settings/general)
             const stBtn = document.getElementById('btn-save-share-tags'); if (stBtn) stBtn.onclick = async () => { try { const v = (document.getElementById('admin-share-tags').value || '').trim(); shareTags = v || '#LynxDeValence #Hockey'; await setDoc(doc(db, `${basePath}/settings/general`), { shareTags }, { merge: true }); appAlert('✅ Hashtags de partage enregistrés : ' + shareTags); } catch (e) { appAlert('Impossible : ' + (e && e.message ? e.message : 'erreur')); } };
+            // v2.22 : maillot du site — forçage manuel de la direction artistique
+            const jsSel0 = document.getElementById('admin-jersey-theme'); if (jsSel0) jsSel0.value = jerseyTheme;
+            const jsBtn = document.getElementById('btn-save-jersey'); if (jsBtn) jsBtn.onclick = async () => { try { const v = document.getElementById('admin-jersey-theme').value; jerseyTheme = v; applyJerseyTheme(); await setDoc(doc(db, `${basePath}/settings/general`), { jerseyTheme: v }, { merge: true }); appAlert('✅ Maillot du site enregistré : ' + (v === 'auto' ? 'automatique' : JERSEY_LABELS[v] || v)); } catch (e) { appAlert('Impossible : ' + (e && e.message ? e.message : 'erreur')); } };
 
             // ============ ARTICLES AUTO + RSS + NOTIFICATIONS ============
             const btnGenResult = document.getElementById('btn-gen-result-article');
