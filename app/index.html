@@ -1610,7 +1610,6 @@
                     <div class="flex gap-2 mt-3 flex-wrap">
                         <button id="btn-fresh-recheck" class="btn-primary py-2 px-4 text-sm">🔄 Revérifier</button>
                         <button id="btn-fetch-all-reports" class="btn-primary py-2 px-4 text-sm bg-emerald-600">🎬 Tout rattraper (déroulés live)</button>
-                        <button id="btn-purge-ghost-reports" class="btn-primary py-2 px-4 text-sm bg-gray-600" title="Supprime les rapports archivés sans vraies équipes (noms par défaut « Domicile/Visiteur ») ou vides 0-0 sans but — ils polluent le rejeu et les badges">🧹 Rapports fantômes</button>
                     </div>
                     <div id="fetch-all-status" class="text-[10px] font-bold mt-2 text-gray-400"></div>
                 </div>
@@ -2723,6 +2722,10 @@
             html += bar('Buts 5 dernières min', g(A, t => t.late), g(B, t => t.late), Math.max(A ? A.late : 0, B ? B.late : 0, 1), 'bg-red-700', '', 'late');
             html += bar('Pénalités / match', g(A, t => (t.rep && t.penN ? (t.penMin / Math.max(t.rep, 1)).toFixed(1) : '—')), g(B, t => (t.rep && t.penN ? (t.penMin / Math.max(t.rep, 1)).toFixed(1) : '—')), 20, 'bg-gray-500', '', 'pen');
             html += bar('Buts solos', g(A, t => t.solo), g(B, t => t.solo), Math.max(A ? A.solo : 0, B ? B.solo : 0, 1), 'bg-slate-500', '', 'solo');
+            html += bar('1er but', g(A, t => (t.fbN ? pctOrDash(t.fbW, t.fbN) : '—')), g(B, t => (t.fbN ? pctOrDash(t.fbW, t.fbN) : '—')), 100, 'bg-yellow-500', '', 'fb'); // v2.22 : comparaison poussée
+            html += bar('Rebond après défaite', g(A, t => (t.bounceN ? pctOrDash(t.bounceW, t.bounceN) : '—')), g(B, t => (t.bounceN ? pctOrDash(t.bounceW, t.bounceN) : '—')), 100, 'bg-orange-400', '', 'bounce');
+            html += bar('Concentration top 3', g(A, t => (t.top3Share != null ? t.top3Share + '%' : '—')), g(B, t => (t.top3Share != null ? t.top3Share + '%' : '—')), 100, 'bg-teal-600', '', 'conc');
+            html += bar('Tirs concédés / match', g(A, t => (t.shotsN ? (t.shotsAg / t.shotsN).toFixed(1) : '—')), g(B, t => (t.shotsN ? (t.shotsAg / t.shotsN).toFixed(1) : '—')), Math.max(A && A.shotsN ? A.shotsAg / A.shotsN : 0, B && B.shotsN ? B.shotsAg / B.shotsN : 0, 1), 'bg-purple-400', '', 'shots');
             html += bar('Dépendance top buteur', g(A, t => (t.topScorer ? pctOrDash(t.depW, t.depN) : '—')), g(B, t => (t.topScorer ? pctOrDash(t.depW, t.depN) : '—')), 100, 'bg-indigo-500', '', 'dep');
             html += bar('Série en cours', streakTxt(A), streakTxt(B), 10, 'bg-emerald-500', '', 'streak');
             html += bar('Points réels vs mérités', g(A, t => t.xN ? t.realPts + ' / ' + Math.round(t.xPts) : '—'), g(B, t => t.xN ? t.realPts + ' / ' + Math.round(t.xPts) : '—'), Math.max(A ? A.realPts : 0, B ? B.realPts : 0, 1), 'bg-fuchsia-500', '', 'xpts');
@@ -2887,36 +2890,271 @@
             } catch (e) {}
         }
 
-        // --- v2.22 : indicateur « déroulé archivé » sur les lignes de calendrier + rejeu en un clic ---
-        // ⚠️ les rapports sont archivés sous un id horodaté (« 2026-10-03T18:00:00.000Z_CHAMBÉRY_CAEN »),
-        // PAS l'id du calendrier : la correspondance passe par le n° FFHG puis par équipes + jour.
-        let _liveReportIds = new Set();
-        let _repIdByMatch = {};
-        const repKey = (h, a, d) => normalize(h || "") + "|" + normalize(a || "") + "|" + (d ? new Date(d).toISOString().slice(0, 10) : "");
-        function repForMatch(m) {
-            try {
-                if (!m) return null;
-                if (m.id && _liveReportIds.has(m.id)) return m.id;
-                if (m.ffhgId && _repIdByMatch["ffhg-" + m.ffhgId]) return _repIdByMatch["ffhg-" + m.ffhgId];
-                return _repIdByMatch[repKey(m.homeTeam, m.awayTeam, m.date)] || _repIdByMatch[repKey(m.awayTeam, m.homeTeam, m.date)] || null;
-            } catch (e) { return null; }
+        // ===================== v2.22 : QUIZ DU LYNX + ÉCOUTE AUDIO + COLLAGE MALIN + ADN + CARTE STATS =====================
+        let _quizState = null;
+        function quizRng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+        function speakArticle() {
+            const box = document.getElementById("news-modal-content");
+            if (!box) return;
+            if (!("speechSynthesis" in window)) { appAlert("La lecture audio n'est pas disponible sur ce navigateur."); return; }
+            const synth = window.speechSynthesis;
+            if (synth.speaking || synth.pending) { synth.cancel(); const b = document.getElementById("btn-speak-article"); if (b) b.textContent = "🎧"; return; }
+            const txt = (box.innerText || "").replace(/(🔗|✏️|🗑️|🎧|⏹️|Partager|Modifier|Supprimer|Écouter|Fermer|✅|❌|📰|🔮|📊|📅)/g, " ").replace(/\s+/g, " ").trim();
+            if (!txt) return;
+            const u = new SpeechSynthesisUtterance(txt.slice(0, 4500));
+            u.lang = "fr-FR"; u.rate = 1.02;
+            try { const fr = synth.getVoices().find(v => v.lang && v.lang.toLowerCase().startsWith("fr")); if (fr) u.voice = fr; } catch (e) {}
+            const reset = () => { const b = document.getElementById("btn-speak-article"); if (b) b.textContent = "🎧"; };
+            u.onend = reset; u.onerror = reset;
+            synth.cancel(); synth.speak(u);
+            const b = document.getElementById("btn-speak-article"); if (b) b.textContent = "⏹️";
         }
-        function repArchived(m) { try { return !!repForMatch(m); } catch (e) { return false; } }
-        async function loadLiveReportIds() {
+        async function buildQuizQuestions() {
+            const qs = [];
+            const d = new Date(); const rnd = quizRng(d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate());
+            const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const tmp = a[i]; a[i] = a[j]; a[j] = tmp; } return a; };
+            const lm = (allMatches || []).filter(m => m.season === activeSeason && isMatchFinished(m) && (normalize(m.homeTeam).includes("valence") || normalize(m.awayTeam).includes("valence"))).sort((a, b) => new Date(a.date) - new Date(b.date));
+            const teams = [...new Set(lm.map(m => normalize(m.homeTeam).includes("valence") ? m.awayTeam : m.homeTeam))];
+            const nxt = (allMatches || []).filter(m => m.season === activeSeason && !isMatchFinished(m) && (normalize(m.homeTeam).includes("valence") || normalize(m.awayTeam).includes("valence"))).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+            if (nxt) {
+                const opp = normalize(nxt.homeTeam).includes("valence") ? nxt.awayTeam : nxt.homeTeam;
+                const pool = teams.length >= 4 ? teams : [...teams, "Épinal", "Amiens", "Dunkerque", "Nantes", "Meudon", "Neuilly"];
+                qs.push({ q: "Qui les Lynx affrontent-ils à leur prochain match ?", ok: opp, opts: shuffle([opp, ...shuffle(pool.filter(t => t !== opp)).slice(0, 3)]), why: "Prochain match : " + new Date(nxt.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) + " contre " + opp + "." });
+            }
+            const scorers = (leaguePlayers || []).filter(p => p && p.season === activeSeason && normalize(p.team || "").includes("valence")).map(p => ({ n: p.name || "?", g: Number(p.goals) || 0 })).filter(p => p.g > 0).sort((a, b) => b.g - a.g);
+            if (scorers.length >= 3) qs.push({ q: "Qui est le meilleur buteur des Lynx cette saison ?", ok: scorers[0].n, opts: shuffle([scorers[0].n, ...shuffle(scorers.slice(1).map(p => p.n)).slice(0, 3)]), why: scorers[0].n + " compte " + scorers[0].g + " buts cette saison." });
+            let big = null;
+            lm.forEach(m => { const isH = normalize(m.homeTeam).includes("valence"); const ls = isH ? m.scoreHome : m.scoreAway, os = isH ? m.scoreAway : m.scoreHome; const mg = ls - os; if (mg > 0 && (!big || mg > big.mg)) big = { m, mg, opp: isH ? m.awayTeam : m.homeTeam, ls, os }; });
+            if (big) qs.push({ q: "Contre qui les Lynx ont-ils signé leur plus large victoire cette saison ?", ok: big.opp, opts: shuffle([big.opp, ...shuffle(teams.filter(t => t !== big.opp)).slice(0, 3)]), why: "Victoire " + big.ls + "-" + big.os + " le " + new Date(big.m.date).toLocaleDateString("fr-FR") + "." });
+            let S = null; try { S = await seasonLiveStats(); } catch (e) {}
+            if (S && S.lx && S.lx.closeN) {
+                const opts = [...new Set([S.lx.closeW, Math.max(0, S.lx.closeW + 1), Math.max(0, S.lx.closeW - 1), S.lx.closeN])].map(String);
+                qs.push({ q: "Combien de matchs serrés (à un but d'écart) les Lynx ont-ils gagnés cette saison ?", ok: String(S.lx.closeW), opts: shuffle(opts), why: S.lx.closeW + " victoires en " + S.lx.closeN + " matchs à un but d'écart." });
+            }
+            if (S && S.lx && S.lx.ppOcc >= 3) {
+                const p = Math.round((S.lx.supG / S.lx.ppOcc) * 100);
+                const opts = [...new Set([p, Math.min(95, p + 8), Math.max(2, p - 8), Math.min(95, p + 15)])].map(x => x + "%");
+                qs.push({ q: "Quel est le taux de réussite des Lynx en supériorité numérique cette saison ?", ok: p + "%", opts: shuffle(opts), why: S.lx.supG + " buts en " + S.lx.ppOcc + " supériorités, soit " + p + "%." });
+            }
             try {
-                const reps = (await dbFetchCol('live-reports')).map(d => ({ ...d.data, _id: d.id }));
-                _liveReportIds = new Set(reps.map(r => r._id));
-                _repIdByMatch = {};
-                reps.forEach(r => {
-                    if (/^(domicile|visiteur)$/i.test(normalize(r.homeTeam || '')) || /^(domicile|visiteur)$/i.test(normalize(r.awayTeam || ''))) return; // rapports fantômes : jamais indexés
-                    if (r.ffhgId) _repIdByMatch["ffhg-" + r.ffhgId] = r._id;
-                    const dDay = r.date || (String(r._id || "").match(/^\d{4}-\d{2}-\d{2}/) || [""])[0];
-                    if (r.homeTeam && r.awayTeam && dDay) {
-                        _repIdByMatch[repKey(r.homeTeam, r.awayTeam, dDay)] = r._id;
-                        _repIdByMatch[repKey(r.awayTeam, r.homeTeam, dDay)] = r._id;
+                const reps = (await dbFetchCol("live-reports")).map(x => ({ ...x.data, _id: x.id })).filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)) && (normalize(r.homeTeam || "").includes("valence") || normalize(r.awayTeam || "").includes("valence"))).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                const lr = reps[0];
+                if (lr) {
+                    const g = (lr.events || []).filter(e => e && e.ty === "BUT" && e.who && !/\bcsc\b/i.test(String(e.who))).sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0))[0];
+                    if (g) {
+                        const others = [...new Set(reps.flatMap(r => (r.events || []).filter(e => e && e.ty === "BUT" && e.who && !/\bcsc\b/i.test(String(e.who))).map(e => String(e.who))))].filter(n => n !== String(g.who));
+                        qs.push({ q: "Qui a marqué le dernier but des Lynx (matchs suivis) ?", ok: String(g.who), opts: shuffle([String(g.who), ...shuffle(others).slice(0, 3)]), why: "But de " + g.who + " lors de " + (lr.homeTeam || "?") + " - " + (lr.awayTeam || "?") + "." });
                     }
+                }
+            } catch (e) {}
+            return { qs: shuffle(qs).slice(0, 5) };
+        }
+        async function renderHomeQuiz() {
+            const el = document.getElementById("home-quiz");
+            if (!el) return;
+            if (!_quizState) {
+                el.innerHTML = '<div class="text-gray-400 italic text-xs">Préparation du quiz…</div>';
+                let qs = [];
+                try { qs = (await buildQuizQuestions()).qs; } catch (e) {}
+                if (qs.length < 3) { el.innerHTML = '<div class="text-gray-400 italic text-xs">Le quiz arrive dès que la saison aura assez de données (buteurs, résultats, déroulés archivés).</div>'; return; }
+                _quizState = { qs, idx: 0, score: 0, done: false };
+            }
+            const st = _quizState;
+            if (st.done) {
+                const msg = st.score >= 4 ? "🥇 Excellente connaissance du vestiaire !" : (st.score >= 2 ? "🦁 Solide — encore un effort et tu fais partie des cadres." : "😤 À travailler : les stats live de la saison sont juste au-dessus !");
+                el.innerHTML = '<div class="text-center py-2"><div class="text-4xl font-black text-lynx-red mb-1">' + st.score + "/" + st.qs.length + '</div><div class="text-sm font-bold mb-3">' + msg + '</div><div class="flex gap-2 justify-center flex-wrap"><button id="quiz-redo" class="btn-secondary py-2 px-4 text-sm">🔁 Rejouer</button><button id="quiz-share" class="btn-primary py-2 px-4 text-sm">🔗 Partager mon score</button></div></div>';
+                document.getElementById("quiz-redo").onclick = () => { _quizState = null; renderHomeQuiz(); };
+                document.getElementById("quiz-share").onclick = async () => {
+                    const txt = "🧠 Quiz du Lynx : " + st.score + "/" + st.qs.length + " — " + msg + " #LynxDeValence";
+                    try { if (navigator.share) await navigator.share({ text: txt }); else { await navigator.clipboard.writeText(txt); appAlert("Score copié — colle-le où tu veux !"); } } catch (e) {}
+                };
+                return;
+            }
+            const q = st.qs[st.idx];
+            el.innerHTML = '<div class="flex justify-between text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2"><span>Question ' + (st.idx + 1) + "/" + st.qs.length + '</span><span>Score : ' + st.score + '</span></div>'
+                + '<div class="font-bold mb-3">' + xmlEsc(q.q) + '</div>'
+                + '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' + q.opts.map(o => '<button class="quiz-opt text-left p-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-lynx-red font-bold text-sm transition">' + xmlEsc(String(o)) + '</button>').join("") + '</div>'
+                + '<div id="quiz-why" class="hidden mt-3 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-xs text-gray-600 dark:text-gray-300"></div>';
+            el.querySelectorAll(".quiz-opt").forEach(b => b.onclick = () => {
+                if (b._locked) return;
+                b._locked = true;
+                const good = b.textContent === String(q.ok);
+                b.classList.add(good ? "!bg-green-500" : "!bg-red-500", "!text-white", "!border-green-500");
+                if (!good) el.querySelectorAll(".quiz-opt").forEach(x => { if (x.textContent === String(q.ok)) x.classList.add("!bg-green-500", "!text-white", "!border-green-500"); });
+                if (good) st.score++;
+                const why = document.getElementById("quiz-why");
+                if (why) { why.classList.remove("hidden"); why.textContent = (good ? "✅ Exact ! " : "❌ Raté — ") + q.why; }
+                setTimeout(() => { st.idx++; if (st.idx >= st.qs.length) st.done = true; renderHomeQuiz(); }, 2300);
+            });
+        }
+        // --- v2.22 : collage malin — coller un texte de résultat, l'app trouve le match et pré-remplit la saisie ---
+        function smartParseResult(txt) {
+            const raw = String(txt || "").replace(/\u00a0/g, " ");
+            const norm = normalize(raw);
+            const res = { teams: [], score: null, prol: /prolong|PRL|tirs au but|fusillade|\bTAB\b/i.test(raw), date: null };
+            const pool = [...new Set((allMatches || []).filter(m => m.season === activeSeason).flatMap(m => [m.homeTeam, m.awayTeam]).filter(Boolean))];
+            const found = [];
+            pool.forEach(nm => {
+                const nn = normalize(nm);
+                const words = nn.split(/\s+/).filter(w => w.length >= 4);
+                if (!nn || found.some(f => normalize(f.nm) === nn)) return;
+                const hit = words.find(w => norm.includes(w));
+                if (hit || norm.includes(nn)) found.push({ nm, idx: norm.indexOf(hit || nn) });
+            });
+            found.sort((a, b) => a.idx - b.idx);
+            res.teams = found.slice(0, 2).map(f => f.nm);
+            const cands = [];
+            const re = /(\d{1,2})\s*(?:[-–—]\s*|\s:\s*)(\d{1,2})(?!\d)/g;
+            let mm;
+            while ((mm = re.exec(raw)) !== null) {
+                const a = Number(mm[1]), b = Number(mm[2]);
+                if (a > 20 || b > 20) continue;
+                const pos = norm.length ? Math.floor((mm.index / raw.length) * norm.length) : 0;
+                const near = res.teams.some(tm => { const w = normalize(tm).split(/\s+/).filter(w2 => w2.length >= 4); const i = w.length ? norm.indexOf(w[0]) : -1; return i >= 0 && Math.abs(i - pos) < 60; });
+                cands.push({ a, b, near, idx: mm.index });
+            }
+            const good = cands.filter(c2 => c2.near);
+            const pick = good.length ? good[0] : cands.filter(c2 => c2.a <= 12 && c2.b <= 12).pop();
+            if (pick) res.score = [pick.a, pick.b];
+            const MON = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre"];
+            for (let i = 0; i < MON.length; i++) {
+                const m2 = norm.match(new RegExp("(\\d{1,2})(?:er|e|eme)?\\s+" + MON[i] + "(?:\\s+(\\d{4}))?"));
+                if (m2) { const y = m2[2] ? Number(m2[2]) : new Date().getFullYear(); res.date = new Date(y, i, Number(m2[1]), 20, 0); break; }
+            }
+            if (!res.date) { const m2 = norm.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/); if (m2) { let y = m2[3] ? Number(m2[3]) : new Date().getFullYear(); if (y < 100) y += 2000; res.date = new Date(y, Number(m2[2]) - 1, Number(m2[1]), 20, 0); } }
+            return res;
+        }
+        function smartPasteApply() {
+            if (!adminCanEdit()) { appAlert("🔒 La saisie des scores est réservée à l'Admin — déverrouille l'Admin d'abord."); return; }
+            const ta = document.getElementById("smart-paste-txt"), msg = document.getElementById("smart-paste-msg");
+            if (!ta || !msg) return;
+            const p = smartParseResult(ta.value);
+            if (!p.score) { msg.textContent = "❌ Score introuvable dans le texte collé."; return; }
+            const cand = (allMatches || []).filter(m => m.season === activeSeason).map(m => {
+                const h = normalize(m.homeTeam || ""), a = normalize(m.awayTeam || "");
+                const n1 = p.teams[0] ? normalize(p.teams[0]) : "", n2 = p.teams[1] ? normalize(p.teams[1]) : "";
+                let sc = 0;
+                if (n1 && n2) { if ((h.includes(n1) || n1.includes(h)) && (a.includes(n2) || n2.includes(a))) sc += 2; else if ((h.includes(n2) || n2.includes(h)) && (a.includes(n1) || n1.includes(a))) sc += 2; }
+                if (p.date) { const dd = Math.abs(new Date(m.date) - p.date) / 86400000; if (dd <= 7) sc += 1; }
+                return { m, sc };
+            }).filter(x => x.sc >= 2).sort((x, y) => y.sc - x.sc)[0];
+            if (!cand) { msg.textContent = "❌ Aucun match du calendrier ne correspond — vérifie les noms ou passe par « 🔄 Résultats FFHG »."; return; }
+            const m = cand.m;
+            let hs = p.score[0], as = p.score[1];
+            if (p.teams.length === 2) {
+                const n1 = normalize(p.teams[0]), nh = normalize(m.homeTeam);
+                if (!((nh.includes(n1) || n1.includes(nh)))) { hs = p.score[1]; as = p.score[0]; }
+            }
+            document.getElementById("qs-id").value = m.id;
+            document.getElementById("qs-label-home").textContent = String(m.homeTeam).substring(0, 3);
+            document.getElementById("qs-label-away").textContent = String(m.awayTeam).substring(0, 3);
+            document.getElementById("qs-match-info").textContent = m.homeTeam + " vs " + m.awayTeam;
+            document.getElementById("qs-home").value = hs;
+            document.getElementById("qs-away").value = as;
+            document.getElementById("qs-prol").checked = !!p.prol;
+            document.getElementById("qs-note").value = m.note || "";
+            const qsF = document.getElementById("qs-ffhg"); if (qsF) qsF.value = m.ffhgId || "";
+            const dt = new Date(m.date); const pad = (n) => String(n).padStart(2, "0");
+            document.getElementById("qs-date").value = dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate());
+            const qsT = document.getElementById("qs-time"); if (qsT) qsT.value = pad(dt.getHours()) + ":" + pad(dt.getMinutes());
+            document.getElementById("qs-playoff").checked = m.type === "Playoff" || m.type === "Playoffs" || (m.type && m.type !== "Saison" && !/maintien/i.test(m.type));
+            const pc = document.getElementById("qs-phase-container"); if (pc) pc.classList.add("hidden");
+            const delBtn = document.getElementById("qs-delete"); if (delBtn) delBtn.classList.remove("hidden");
+            msg.textContent = "✅ " + m.homeTeam + " vs " + m.awayTeam + " — vérifie et enregistre.";
+            toggleModal("quick-score-modal", true);
+        }
+        // --- v2.22 : ADN des Lynx — quand on marque, quand on craque (déroulés archivés) ---
+        let _adnCache = { at: 0, v: null };
+        async function buildLynxDna() {
+            if (_adnCache.v && Date.now() - _adnCache.at < 120000) return _adnCache.v;
+            const reps = (await dbFetchCol("live-reports")).map(d => ({ ...d.data, _id: d.id })).filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)) && (normalize(r.homeTeam || "").includes("valence") || normalize(r.awayTeam || "").includes("valence")));
+            const slots = Array.from({ length: 13 }, () => [0, 0]);
+            const per = [[0, 0], [0, 0], [0, 0], [0, 0]];
+            const firstT = [];
+            let led2 = 0, played2 = 0;
+            reps.forEach(rep => {
+                const isH = normalize(rep.homeTeam || "").includes("valence");
+                const goals = (rep.events || []).filter(e => e && e.ty === "BUT").sort((x, y) => (Number(x.t) || 0) - (Number(y.t) || 0));
+                goals.forEach(e => {
+                    let sd = e.side === "A" ? "A" : "H";
+                    if (/\bcsc\b/i.test(String(e.who || ""))) sd = sd === "H" ? "A" : "H";
+                    const ours = sd === (isH ? "H" : "A");
+                    const t = Math.max(0, Number(e.t) || 0);
+                    slots[t >= 3600 ? 12 : Math.min(11, Math.floor(t / 300))][ours ? 0 : 1]++;
+                    per[t >= 3600 ? 3 : Math.min(2, Math.floor(t / 1200))][ours ? 0 : 1]++;
+                });
+                if (goals.length) {
+                    const g0 = goals[0]; let sd = g0.side === "A" ? "A" : "H";
+                    if (/\bcsc\b/i.test(String(g0.who || ""))) sd = sd === "H" ? "A" : "H";
+                    if (sd === (isH ? "H" : "A")) firstT.push(Number(g0.t) || 0);
+                }
+                const perT = Array.isArray(rep.perT) ? rep.perT.map(v => { const a2 = perPair2(v); return isH ? a2 : [a2[1], a2[0]]; }) : null;
+                if (perT && perT.length >= 2 && perT[1]) { played2++; if (perT[1][0] > perT[1][1]) led2++; }
+            });
+            const tot = slots.reduce((s, x) => [s[0] + x[0], s[1] + x[1]], [0, 0]);
+            const v = { slots, per, firstT, led2, played2, n: reps.length, tot };
+            _adnCache = { at: Date.now(), v };
+            return v;
+        }
+        // --- v2.22 : carte stats partageable (PNG 1200×630, comme la carte résultat) ---
+        async function makeStatsCard() {
+            const prev = document.getElementById("stats-card-preview");
+            if (prev) { prev.classList.remove("hidden"); prev.innerHTML = '<div class="text-xs text-gray-400">Génération…</div>'; }
+            let S = null; try { S = await seasonLiveStats(); } catch (e) {}
+            const L = S && S.lx;
+            if (!L || !L.mj) { if (prev) prev.innerHTML = '<div class="text-xs text-orange-500">Pas encore assez de données pour la carte.</div>'; return; }
+            const c = document.createElement("canvas"); c.width = 1200; c.height = 630;
+            const x = c.getContext("2d");
+            const grd = x.createLinearGradient(0, 0, 0, 630); grd.addColorStop(0, "#101828"); grd.addColorStop(1, "#1b2740");
+            x.fillStyle = grd; x.fillRect(0, 0, 1200, 630);
+            x.fillStyle = "#D90429"; x.fillRect(0, 0, 1200, 10);
+            x.textAlign = "center";
+            x.fillStyle = "#9aa7bd"; x.font = "bold 24px Arial"; x.fillText("SAISON " + String(activeSeason).replace("-", "/"), 600, 80);
+            x.fillStyle = "#ffffff"; x.font = "bold 44px Arial"; x.fillText("LYNX DE VALENCE", 600, 140);
+            const V = (L.w || 0) + (L.wot || 0), Dl = (L.l || 0) + (L.lot || 0), N = Math.max(0, L.mj - V - Dl);
+            x.font = "bold 56px Arial"; x.fillStyle = "#ffffff";
+            x.fillText(V + " V · " + N + " N · " + Dl + " D", 600, 240);
+            x.font = "bold 28px Arial"; x.fillStyle = "#D90429";
+            x.fillText(L.realPts + " points en " + L.mj + " matchs", 600, 292);
+            const form = L.form.slice(-5);
+            form.forEach((f, i) => {
+                const cx2 = 600 + (i - (form.length - 1) / 2) * 52;
+                x.beginPath(); x.arc(cx2, 350, 16, 0, Math.PI * 2);
+                x.fillStyle = String(f)[0] === "V" ? "#16a34a" : (String(f)[0] === "N" ? "#6b7280" : "#7f1d1d");
+                x.fill();
+                x.fillStyle = "#ffffff"; x.font = "bold 15px Arial"; x.fillText(String(f)[0], cx2, 356);
+            });
+            const ppT = L.ppOcc ? Math.round((L.supG / L.ppOcc) * 100) + "%" : "—";
+            const pkT = L.penN ? Math.round((1 - L.infGa / L.penN) * 100) + "%" : "—";
+            x.fillStyle = "#9aa7bd"; x.font = "bold 20px Arial";
+            x.fillText("SUPÉRIORITÉ", 380, 425); x.fillText("INFÉRIORITÉ", 820, 425);
+            x.fillStyle = "#ffffff"; x.font = "bold 58px Arial";
+            x.fillText(ppT, 380, 485); x.fillText(pkT, 820, 485);
+            const serie = L.streak > 0 ? "🔥 " + L.streak + " victoires d'affilée" : (L.streak < 0 ? "❄️ " + (-L.streak) + " défaites d'affilée" : "");
+            const top = L.topScorer ? "🏒 " + L.topScorer + " (" + L.topScorerGoals + " buts)" : "";
+            x.fillStyle = "#e5e9f0"; x.font = "bold 24px Arial";
+            x.fillText([serie, top].filter(Boolean).join("   •   "), 600, 545);
+            const nxt = (allMatches || []).filter(m => m && m.season === activeSeason && (!m.type || m.type === "Saison") && !isMatchFinished(m) && (normalize(m.homeTeam).includes("valence") || normalize(m.awayTeam).includes("valence"))).sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+            if (nxt) {
+                const isH = normalize(nxt.homeTeam).includes("valence");
+                x.fillStyle = "#9aa7bd"; x.font = "bold 22px Arial";
+                x.fillText("Prochain match : " + new Date(nxt.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) + " — " + (isH ? "vs" : "@") + " " + (isH ? nxt.awayTeam : nxt.homeTeam), 600, 585);
+            }
+            x.font = "bold 20px Arial"; x.fillStyle = "#D90429";
+            x.fillText("🦌 LYNX DE VALENCE — HOCKEY SUR GLACE", 600, 620);
+            const url = c.toDataURL("image/png");
+            if (prev) prev.innerHTML = '<img src="' + url + '" alt="Carte stats" class="w-full rounded-xl shadow-lg mb-2"><a href="' + url + '" download="stats-lynx.png" class="block w-full py-2 bg-lynx-red text-white rounded-xl text-sm font-bold text-center">⬇️ Télécharger le PNG</a><div id="stats-card-clip" class="text-[10px] text-gray-400 mt-1"></div>';
+            try {
+                c.toBlob(async (blob) => {
+                    try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); const s = document.getElementById("stats-card-clip"); if (s) s.textContent = "✅ Image aussi copiée dans le presse-papiers"; } catch (e) {}
                 });
             } catch (e) {}
+        }
+        // --- v2.22 : indicateur « déroulé archivé » sur les lignes de calendrier + rejeu en un clic ---
+        let _liveReportIds = new Set();
+        function repArchived(m) { try { return !!(m && m.id && _liveReportIds.has(m.id)); } catch (e) { return false; } }
+        async function loadLiveReportIds() {
+            try { _liveReportIds = new Set((await dbFetchCol('live-reports')).map(d => d.id)); } catch (e) {}
             try { scheduleUI(); } catch (e) {} // re-rendu pour poser les badges 🎬
         }
         document.addEventListener('click', async (ev) => {
@@ -2924,27 +3162,37 @@
             if (!b) return;
             ev.preventDefault(); ev.stopPropagation(); // ne déclenche pas la saisie de score de la ligne
             const id = b.dataset.rep || '';
+            let reps = window._liveReplayReps || [];
+            if (!reps.length || !reps.some(r => r._id === id)) {
+                try { reps = (await dbFetchCol('live-reports')).map(d => ({ ...d.data, _id: d.id }))
+                    .filter(r => r && Array.isArray(r.events) && r.events.length && (!r.season || String(r.season) === String(activeSeason)))
+                    .sort((x, y) => new Date(y.date || 0) - new Date(x.date || 0));
+                    window._liveReplayReps = reps; } catch (e) { reps = []; }
+            }
+            const idx = reps.findIndex(r => r._id === id);
+            if (idx < 0) { appAlert('Déroulé introuvable en base.'); return; }
+            try { // v2.22 : réparation automatique d'un rapport incomplet (noms « Domicile/Visiteur », score vide) depuis le calendrier
+                const r0 = reps[idx];
+                const broken = !r0.homeTeam || r0.homeTeam === 'Domicile' || !r0.awayTeam || r0.awayTeam === 'Visiteur' || (!(r0.events || []).length && !(Number(r0.scoreHome) || 0) && !(Number(r0.scoreAway) || 0));
+                if (broken) {
+                    const dDay = r0.date || (String(r0._id || '').match(/^\d{4}-\d{2}-\d{2}/) || [''])[0];
+                    const cm = (allMatches || []).find(m => (m.ffhgId && r0.ffhgId && String(m.ffhgId) === String(r0.ffhgId)) || (dDay && (repKey(m.homeTeam, m.awayTeam, dDay) === repKey(r0.homeTeam, r0.awayTeam, dDay) || repKey(m.awayTeam, m.homeTeam, dDay) === repKey(r0.homeTeam, r0.awayTeam, dDay))));
+                    if (cm && cm.scoreHome != null) {
+                        await setDoc(doc(db, basePath + '/live-reports/' + r0._id), { homeTeam: cm.homeTeam, awayTeam: cm.awayTeam, scoreHome: cm.scoreHome, scoreAway: cm.scoreAway, isProl: !!cm.isProl, date: cm.date, ffhgId: cm.ffhgId || r0.ffhgId || null }, { merge: true });
+                        Object.assign(r0, { homeTeam: cm.homeTeam, awayTeam: cm.awayTeam, scoreHome: cm.scoreHome, scoreAway: cm.scoreAway, isProl: !!cm.isProl });
+                        window._liveReplayReps = reps;
+                        appAlert('🛠️ Rapport incomplet réparé depuis le calendrier : ' + cm.homeTeam + ' - ' + cm.awayTeam + '.');
+                    }
+                }
+            } catch (e) {}
             const t = document.querySelector('.main-nav-tab[data-content="live-match"]');
             if (t) t.click(); else { const sel2 = document.getElementById('mobile-nav-select'); if (sel2) { sel2.value = 'live-match'; sel2.dispatchEvent(new Event('change')); } }
-            setTimeout(async () => {
+            setTimeout(() => {
                 const sel3 = document.getElementById('live-replay-select');
+                if (sel3) sel3.value = String(idx);
                 const rb = document.getElementById('live-replay-btn');
-                if (!sel3 || !rb) { appAlert("Ouvre l'onglet Direct → « Revivre un match » pour rejouer ce déroulé."); return; }
-                let reps2 = window._liveReplayReps || [];
-                // v2.22 : la liste du menu et l'index cliqué doivent venir du MÊME calcul — on reconstruit si le moindre doute
-                if (!reps2.length || !reps2.some(r => r._id === id) || sel3.options.length !== reps2.length + 1) {
-                    try {
-                        reps2 = (await dbFetchCol('live-reports')).map(d => ({ ...d.data, _id: d.id }))
-                            .filter(r => r && Array.isArray(r.events) && r.events.length && (!r.season || String(r.season) === String(activeSeason)) && !/^(domicile|visiteur)$/i.test(normalize(r.homeTeam || '')) && !/^(domicile|visiteur)$/i.test(normalize(r.awayTeam || '')))
-                            .sort((x, y) => new Date(y.date || 0) - new Date(x.date || 0));
-                        window._liveReplayReps = reps2;
-                        sel3.innerHTML = '<option value="">— choisir un match —</option>' + reps2.map((r, i) => `<option value="${i}">${new Date(r.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} — ${xmlEsc(r.homeTeam || '?')} ${Number(r.scoreHome) || 0}-${Number(r.scoreAway) || 0} ${xmlEsc(r.awayTeam || '?')}</option>`).join('');
-                    } catch (e) { reps2 = []; }
-                }
-                const idx = reps2.findIndex(r => r._id === id);
-                if (idx < 0) { appAlert('Déroulé introuvable en base.'); return; }
-                sel3.value = String(idx);
-                rb.click();
+                if (rb) rb.click();
+                else appAlert("Ouvre l'onglet Direct → « Revivre un match » pour rejouer ce déroulé.");
             }, 300);
         });
 
@@ -9946,7 +10194,7 @@ ${cards}
                 try {
                     const sel = document.getElementById('live-replay-select'); if (!sel) return;
                     const reps = (await dbFetchCol('live-reports')).map(d => ({ ...d.data, _id: d.id }))
-                        .filter(r => r && Array.isArray(r.events) && r.events.length && (!r.season || String(r.season) === String(activeSeason)) && !/^(domicile|visiteur)$/i.test(normalize(r.homeTeam || '')) && !/^(domicile|visiteur)$/i.test(normalize(r.awayTeam || '')))
+                        .filter(r => r && Array.isArray(r.events) && r.events.length && (!r.season || String(r.season) === String(activeSeason)))
                         .sort((x, y) => new Date(y.date || 0) - new Date(x.date || 0));
                     const keep = sel.value;
                     sel.innerHTML = '<option value="">— choisir un match —</option>' + reps.map((r, i) => `<option value="${i}">${new Date(r.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} — ${xmlEsc(r.homeTeam || '?')} ${Number(r.scoreHome) || 0}-${Number(r.scoreAway) || 0} ${xmlEsc(r.awayTeam || '?')}</option>`).join('');
