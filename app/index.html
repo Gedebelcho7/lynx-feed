@@ -1488,6 +1488,17 @@
             <!-- NEW: RSS ADMIN -->
             <div id="tab-rss" class="admin-tab-content space-y-6">
                 <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                    <h3 class="font-bold mb-1">📌 Échos presse collés à la main</h3>
+                    <p class="text-xs text-gray-500 mb-2">Colle ici un article de presse que les flux ne récupèrent pas (sites qui bloquent, papier du jour…) : il alimente les articles IA (source citée, lien fourni) et apparaît en tête des actus avec le début du texte, cliquable vers le site. Affecte-le à un match précis (il ne sortira que pour les articles de ce match) ou laisse « Général ».</p>
+                    <form id="press-clip-form" class="space-y-2">
+                        <input id="clip-title" class="w-full p-2 border rounded dark:bg-gray-700 text-sm font-bold" placeholder="Titre de l'article" required>
+                        <div class="flex gap-2"><input id="clip-source" class="w-1/3 p-2 border rounded dark:bg-gray-700 text-sm" placeholder="Source (ex. Le Dauphiné)" required><input id="clip-url" class="flex-1 p-2 border rounded dark:bg-gray-700 text-sm" placeholder="URL de l'article (pour le lien cliquable)"></div>
+                        <textarea id="clip-excerpt" class="w-full p-2 border rounded dark:bg-gray-700 text-sm h-20" placeholder="Début du texte collé (2-3 phrases suffisent pour nourrir l'IA)"></textarea>
+                        <div class="flex gap-2 items-end"><select id="clip-match" class="flex-1 p-2 border rounded dark:bg-gray-700 text-sm"><option value="">Général (tous les articles)</option></select><button type="submit" class="btn-primary py-2 px-4 text-sm whitespace-nowrap">📌 Enregistrer</button></div>
+                    </form>
+                    <div id="press-clips-list" class="space-y-2 mt-3 max-h-60 overflow-y-auto"></div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                     <h3 class="font-bold mb-1">Flux RSS surveillés</h3>
                     <p class="text-xs text-gray-500 mb-3">Les articles contenant un mot-clé sont automatiquement sauvegardés dans "Actus RSS". Un flux peut avoir ses <b>propres mots-clés</b> (bouton 🔎 sur la ligne du flux, vide = mots-clés globaux) — utile pour les flux de sport général : mets les mots-clés larges (valence, division 1) en global et « lynx » seul sur ces flux là.</p>
                     <form id="form-add-rss-feed" class="flex gap-2 items-end border-b dark:border-gray-700 pb-4 mb-4">
@@ -1520,7 +1531,7 @@
                     <div id="admin-rss-keywords" class="flex flex-wrap gap-2"></div>
                     <div class="mt-4 pt-3 border-t dark:border-gray-700">
                         <h4 class="font-bold mb-1 text-sm">🎯 Prochain adversaire (automatique)</h4>
-                        <p class="text-xs text-gray-500 mb-2">Les articles sur l'équipe adverse du prochain match passent aussi le filtre (tous les flux), jusqu'à 3 h après le coup d'envoi — puis suivent automatiquement le match suivant.</p>
+                        <p class="text-xs text-gray-500 mb-2">Les articles sur l'équipe adverse du prochain match passent aussi le filtre — uniquement sur les flux au filtre global (les flux à mots-clés propres gardent leurs restrictions) — jusqu'à 3 h après le coup d'envoi — puis suivent automatiquement le match suivant.</p>
                         <div id="rss-dyn-kws" class="flex flex-wrap gap-2"></div>
                     </div>
                     <div class="mt-4 pt-3 border-t dark:border-gray-700">
@@ -2404,6 +2415,36 @@
         // Moteur unique : une seule lecture des déroulés (memo 2 min), stats par équipe pour
         // l'accueil, le comparateur et la fiche adverse. Rien n'est inventé : tout vient des
         // événements archivés (live-reports) et du calendrier.
+        let pressClips = []; // v2.22 : échos presse collés à la main (Admin → RSS), utilisés par les articles IA et les actus
+        // v2.22 : explications des stats — discrètes (ⓘ qui déplie 2 phrases au clic, compatible mobile)
+        const STATS_EXPLAIN = {
+            pp: 'Buts marqués en supériorité numérique divisés par les occasions (pénalités adverses). Au-dessus de 20-25 %, c\'est très bon.',
+            pk: 'Part des pénalités « tuées » sans encaisser : 1 − (buts encaissés en infériorité ÷ pénalités prises). Au-dessus de 80 %, c\'est solide.',
+            fb: 'Part des matchs où l\'équipe ouvre le score, et victoires dans ces matchs. Marquer le premier change tout : l\'équipe qui mène gagne beaucoup plus souvent.',
+            comeback: 'Victoires après avoir été mené à la fin du 2e tiers. Signe de caractère : l\'équipe sait renverser un match mal engagé.',
+            late: 'Buts marqués et encaissés dans les 5 dernières minutes du temps réglementaire. Révèle la condition physique et la gestion de fin de match.',
+            resp: 'Temps moyen entre un but encaissé et la réponse. Court = l\'équipe ne doute pas ; long = elle s\'enfonce dans le match.',
+            eq: 'Retours au score : buts qui remettent à égalité après avoir été mené, et victoires obtenues ensuite.',
+            close: 'Matchs à un but d\'écart : victoires / total. Gagner les matchs serrés est une compétence à part entière — c\'est souvent ce qui sépare deux niveaux proches.',
+            bounce: 'Résultat du match qui suit une défaite. Mesure la capacité à se relever et à casser les spirales négatives.',
+            streak: 'Série de victoires ou de défaites en cours, et records de la saison. Le momentum pèse sur la confiance.',
+            pen: 'Minutes de pénalité par match, et pénalités prises en fin de match. Trop de discipline coûte des buts — surtout en fin de rencontre.',
+            dep: 'Part de victoires quand le meilleur buteur marque. Haut = l\'équipe dépend de lui ; bas = l\'attaque est partagée.',
+            duo: 'Paire buteur → assistant la plus fréquente de la saison, issue des déroulés archivés.',
+            conc: 'Part des buts marquée par les 3 meilleurs buteurs. Haut = attaque concentrée, plus facile à neutraliser ; bas = attaque diffuse.',
+            solo: 'Buts marqués sans assistance. Souvent des buts d\'individu : frappe, rush, récupération haute.',
+            dec: 'Joueur qui compte le plus de buts décisifs (le but qui met le vainqueur en avance pour de bon).',
+            xpts: 'Points que le modèle donne à l\'équipe d\'après ses matchs (barème V=3, Vp=2, Dp=1). Plus que les points réels = sur-performance (ça redescend en général) ; moins = malchance (ça remonte).',
+            shots: 'Tirs cadrés par match, issus des déroulés archivés. Meilleur signal d\'activité offensive que les buts, qui dépendent aussi de la chance.',
+            eff: 'Buts marqués pour 100 tirs cadrés. Mesure la finition : une équipe efficace marque peu mais juste.',
+            dna: 'Répartition des buts par tranche de 5 minutes (rouge = marqués, gris = encaissés), calculée depuis les déroulés archivés des matchs suivis. Révèle les moments forts et les passages à vide.'
+        };
+        document.addEventListener('click', (ev) => {
+            const si = ev.target && ev.target.closest ? ev.target.closest('.stat-info') : null;
+            if (si) { ev.preventDefault(); const c = si.closest('.stat-chip'); const ex = c ? c.querySelector('.stat-exp') : null; if (ex) ex.classList.toggle('hidden'); return; }
+            const dc = ev.target && ev.target.closest ? ev.target.closest('.delete-clip-btn') : null;
+            if (dc) { ev.preventDefault(); appConfirm('Supprimer cet écho presse ?', async () => { try { await deleteDoc(doc(db, basePath + '/press-clips/' + dc.dataset.id)); } catch (e) {} }); }
+        });
         let _sstatsCache = { at: 0, key: '', v: null };
         function perPair2(x) { if (Array.isArray(x)) return [Number(x[0]) || 0, Number(x[1]) || 0]; const s = String(x || '').split('-'); return [Number(s[0]) || 0, Number(s[1]) || 0]; }
         function parseScorer(detail) { // « N° 17 Ugo Giffon (assist. N° 9 Jean Test, N° 11 Autre Test) » → { g, a }
@@ -2421,12 +2462,12 @@
             const reps = (await dbFetchCol('live-reports')).map(d => ({ ...d.data, _id: d.id }))
                 .filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)));
             const T = {};
-            const acc = (nm) => { const k = normalize(nm || '?'); if (!T[k]) T[k] = { name: nm || '?', rep: 0, gfRep: 0, gf: 0, ga: 0, mj: 0, w: 0, wot: 0, l: 0, lot: 0, pts: 0, realPts: 0, xPts: 0, xN: 0, closeW: 0, closeN: 0, behind2W: 0, behind2N: 0, eq: 0, eqW: 0, resp: [], late: 0, lateGa: 0, supG: 0, ppOcc: 0, infGa: 0, penN: 0, penMin: 0, pen5: 0, solo: 0, fbN: 0, fbW: 0, scorers: {}, duos: {}, decW: {}, bounceN: 0, bounceW: 0, streak: 0, bestW: 0, bestL: 0, form: [], rest: { a: [0, 0], b: [0, 0], c: [0, 0] }, vsOpp: {}, vsTop: [0, 0], vsBot: [0, 0] }; return T[k]; };
+            const acc = (nm) => { const k = normalize(nm || '?'); if (!T[k]) T[k] = { name: nm || '?', rep: 0, gfRep: 0, gf: 0, ga: 0, mj: 0, w: 0, wot: 0, l: 0, lot: 0, pts: 0, realPts: 0, xPts: 0, xN: 0, closeW: 0, closeN: 0, behind2W: 0, behind2N: 0, eq: 0, eqW: 0, resp: [], late: 0, lateGa: 0, supG: 0, ppOcc: 0, infGa: 0, penN: 0, penMin: 0, pen5: 0, solo: 0, fbN: 0, fbW: 0, shotsF: 0, shotsAg: 0, shotsN: 0, scorers: {}, duos: {}, decW: {}, bounceN: 0, bounceW: 0, streak: 0, bestW: 0, bestL: 0, form: [], rest: { a: [0, 0], b: [0, 0], c: [0, 0] }, vsOpp: {}, vsTop: [0, 0], vsBot: [0, 0] }; return T[k]; };
             // 1) déroulés archivés : événements (buts, pénalités, timings, individuel)
             reps.forEach(rep => {
                 const h = acc(rep.homeTeam || 'Domicile'), a = acc(rep.awayTeam || 'Visiteur');
                 h.rep++; a.rep++;
-                const evs = (rep.events || []).filter(e => e && (e.ty === 'BUT' || /PEN|PUN/i.test(String(e.ty || '')))).sort((x, y) => (Number(x.t) || 0) - (Number(y.t) || 0));
+                const evs = (rep.events || []).filter(e => e && (e.ty === 'BUT' || /PEN|PUN|SANCTION/i.test(String(e.ty || '')))).sort((x, y) => (Number(x.t) || 0) - (Number(y.t) || 0)); // v2.22 : le flux FFHG nomme les pénalités « SANCTION » (dur dans le flux, non archivé → 2 min par défaut)
                 const goals = [];
                 evs.forEach(e => {
                     const t = Number(e.t) || 0;
@@ -2483,6 +2524,7 @@
                 if (eqH && fh > fa) h.eqW++; if (eqA && fa > fh) a.eqW++;
                 // bilan match (barème FFHG : V=3, Vp=2, Dp=1)
                 h.mj++; a.mj++; h.gf += fh; h.ga += fa; a.gf += fa; a.ga += fh;
+                h.shotsF += Number(rep.shotsH) || 0; h.shotsAg += Number(rep.shotsA) || 0; h.shotsN++; a.shotsF += Number(rep.shotsA) || 0; a.shotsAg += Number(rep.shotsH) || 0; a.shotsN++; // v2.22 : tirs cadrés exploités
                 const prol = !!rep.isProl;
                 if (fh > fa) { h.pts += prol ? 2 : 3; if (prol) h.wot++; else h.w++; a.pts += prol ? 1 : 0; a.l++; if (prol) a.lot++; }
                 else if (fa > fh) { a.pts += prol ? 2 : 3; if (prol) a.wot++; else a.w++; h.pts += prol ? 1 : 0; h.l++; if (prol) h.lot++; }
@@ -2581,27 +2623,27 @@
             let S; try { S = await seasonLiveStats(); } catch (e) { el.innerHTML = ''; return; }
             const L = S.lx;
             if (!L || (!L.rep && !L.mj)) { el.innerHTML = ''; return; }
-            const chip = (lab, val, sub) => '<div class="bg-white/70 dark:bg-dark-card/70 p-3 rounded-xl shadow border-l-4 border-lynx-red"><div class="text-[10px] font-black uppercase tracking-wider text-gray-500">' + lab + '</div><div class="text-xl font-black text-lynx-red">' + val + '</div>' + (sub ? '<div class="text-[10px] text-gray-400">' + sub + '</div>' : '') + '</div>';
+            const chip = (lab, val, sub, k) => '<div class="stat-chip bg-white/70 dark:bg-dark-card/70 p-3 rounded-xl shadow border-l-4 border-lynx-red"><div class="text-[10px] font-black uppercase tracking-wider text-gray-500">' + lab + (k && STATS_EXPLAIN[k] ? ' <span class="stat-info cursor-pointer align-middle text-gray-300 hover:text-lynx-red" title="Qu\'est-ce que c\'est ?">ⓘ</span>' : '') + '</div><div class="text-xl font-black text-lynx-red">' + val + '</div>' + (sub ? '<div class="text-[10px] text-gray-400">' + sub + '</div>' : '') + (k && STATS_EXPLAIN[k] ? '<div class="stat-exp hidden mt-1 pt-1 border-t border-gray-100 dark:border-gray-700 text-[10px] text-gray-500 dark:text-gray-400 leading-snug">' + STATS_EXPLAIN[k] + '</div>' : '') + '</div>';
             const repSub = 'sur ' + L.rep + ' déroulé(s)';
-            const pp = pctOrDash(L.supG, L.ppOcc), pk = L.penN ? Math.round((1 - L.infGa / L.penN) * 100) + '%' : '—';
+            const pp = L.ppOcc ? Math.round((L.supG / L.ppOcc) * 100) + '%' : (L.supG ? L.supG + ' buts SN' : '—'), pk = L.penN ? Math.round((1 - L.infGa / L.penN) * 100) + '%' : (L.infGa ? L.infGa + ' encaissés SN' : '—'); // v2.22 : repli si le déroulé n'a aucune sanction
             const respAvg = L.resp.length ? fmtMMSS(L.resp.reduce((s, v) => s + v, 0) / L.resp.length) : '—';
             const chips = [
-                chip('Supériorité (PP)', pp, L.supG + ' buts / ' + L.ppOcc + ' occasions'),
-                chip('Infériorité (PK)', pk, L.infGa + ' encaissés / ' + L.penN + ' sanctions'),
-                chip('1er but', pctOrDash(L.fbW, L.fbN), L.fbW + ' victoires quand on ouvre le score'),
-                chip('Comebacks', L.behind2N ? L.behind2W + '/' + L.behind2N : '—', 'victoires après avoir mené... nous être mené après 2 tiers'),
-                chip('Buts 5 dernières min', L.late + ' - ' + L.lateGa, 'marqués - encaissés (t ≥ 58:20)'),
-                chip('Temps de réponse', respAvg, 'délai moyen but encaissé → réponse'),
-                chip('Égalisations', L.eq + (L.eqW ? ' (' + L.eqW + ' gagnés)' : ''), 'retours au score'),
-                chip('Matchs serrés', L.closeN ? L.closeW + '/' + L.closeN : '—', 'à 1 but d\'écart'),
-                chip('Après défaite', L.bounceN ? pctOrDash(L.bounceW, L.bounceN) : '—', L.bounceN + ' fois testé'),
-                chip('Série en cours', L.streak > 0 ? L.streak + ' victoire(s)' : (L.streak < 0 ? (-L.streak) + ' défaite(s)' : '—'), 'record : ' + L.bestW + 'V / ' + L.bestL + 'D'),
-                chip('Pénalités', L.rep ? (L.penN ? (L.penMin / Math.max(L.rep, 1)).toFixed(1) + ' min/match' : '—') : '—', L.pen5 + ' dans les 5 dernières min'),
-                chip('Dépendance', L.depN != null && L.depN !== undefined && L.topScorer ? pctOrDash(L.depW, L.depN) : '—', L.topScorer ? 'victoires quand ' + L.topScorer + ' marque (' + L.topScorerGoals + ' buts)' : ''),
-                chip('Meilleur duo', L.topDuo ? L.topDuo.n + 'x' : '—', L.topDuo ? L.topDuo.label : ''),
-                chip('Concentration', L.top3Share != null ? L.top3Share + '%' : '—', 'des buts venant du top 3'),
-                chip('Buts solos', L.gfRep ? L.solo + ' (' + Math.round(L.solo / L.gfRep * 100) + '%)' : '—', 'sans assistance'),
-                chip('Buts décisifs', L.topDec ? L.topDec + ' (' + L.decW[L.topDec] + ')' : '—', 'meilleur buteur décisif')
+                chip('Supériorité (PP)', pp, L.supG + ' buts / ' + L.ppOcc + ' occasions', 'pp'),
+                chip('Infériorité (PK)', pk, L.infGa + ' encaissés / ' + L.penN + ' sanctions', 'pk'),
+                chip('1er but', pctOrDash(L.fbW, L.fbN), L.fbW + ' victoires quand on ouvre le score', 'fb'),
+                chip('Comebacks', L.behind2N ? L.behind2W + '/' + L.behind2N : '—', 'victoires après avoir mené... nous être mené après 2 tiers', 'comeback'),
+                chip('Buts 5 dernières min', L.late + ' - ' + L.lateGa, 'marqués - encaissés (t ≥ 58:20)', 'late'),
+                chip('Temps de réponse', respAvg, 'délai moyen but encaissé → réponse', 'resp'),
+                chip('Égalisations', L.eq + (L.eqW ? ' (' + L.eqW + ' gagnés)' : ''), 'retours au score', 'eq'),
+                chip('Matchs serrés', L.closeN ? L.closeW + '/' + L.closeN : '—', 'à 1 but d\'écart', 'close'),
+                chip('Après défaite', L.bounceN ? pctOrDash(L.bounceW, L.bounceN) : '—', L.bounceN + ' fois testé', 'bounce'),
+                chip('Série en cours', L.streak > 0 ? L.streak + ' victoire(s)' : (L.streak < 0 ? (-L.streak) + ' défaite(s)' : '—'), 'record : ' + L.bestW + 'V / ' + L.bestL + 'D', 'streak'),
+                chip('Pénalités', L.rep ? (L.penN ? (L.penMin / Math.max(L.rep, 1)).toFixed(1) + ' min/match' : '—') : '—', L.pen5 + ' dans les 5 dernières min', 'pen'),
+                chip('Dépendance', L.depN != null && L.depN !== undefined && L.topScorer ? pctOrDash(L.depW, L.depN) : '—', L.topScorer ? 'victoires quand ' + L.topScorer + ' marque (' + L.topScorerGoals + ' buts)' : '', 'dep'),
+                chip('Meilleur duo', L.topDuo ? L.topDuo.n + 'x' : '—', L.topDuo ? L.topDuo.label : '', 'duo'),
+                chip('Concentration', L.top3Share != null ? L.top3Share + '%' : '—', 'des buts venant du top 3', 'conc'),
+                chip('Buts solos', L.gfRep ? L.solo + ' (' + Math.round(L.solo / L.gfRep * 100) + '%)' : '—', 'sans assistance', 'solo'),
+                chip('Buts décisifs', L.topDec ? L.topDec + ' (' + L.decW[L.topDec] + ')' : '—', 'meilleur buteur décisif', 'dec')
             ].join('');
             // points mérités vs réels — Valence + sur/sous-performeurs de la ligue
             let xHtml = '';
@@ -2660,7 +2702,7 @@
             const calOf = (nm) => S.cal.filter(m => m.homeTeam === nm || m.awayTeam === nm);
             const cs = (nm) => { const ms = calOf(nm); let mj = 0, gf = 0, ga = 0, w = 0, pts = 0; ms.forEach(m => { const s = m.homeTeam === nm ? m.scoreHome : m.scoreAway, o = m.homeTeam === nm ? m.scoreAway : m.scoreHome; mj++; gf += s; ga += o; if (s > o) { w++; pts += m.isProl ? 2 : 3; } else if (s === o) pts += 1; else if (m.isProl) pts += 1; }); return { mj, avgGF: mj ? gf / mj : 0, avgGA: mj ? ga / mj : 0, winPct: mj ? (w / mj) * 100 : 0, pts }; };
             const cA = cs(tA), cB = cs(tB);
-            const bar = (lab, va, vb, mx, col, sub) => '<div class="mb-3"><div class="flex justify-between text-xs font-bold mb-1"><span class="' + (va > vb ? 'text-blue-600' : '') + '">' + va + (sub ? ' <span class="text-[9px] text-gray-400 font-normal">' + sub + '</span>' : '') + '</span><span class="text-gray-400 uppercase">' + lab + '</span><span class="' + (vb > va ? 'text-red-600' : '') + '">' + vb + '</span></div><div class="comp-bar-container"><div class="comp-bar-l ' + col + '" style="width:' + (mx ? (va / mx) * 100 : 0) + '%"></div><div class="comp-bar-r ' + col + '" style="width:' + (mx ? (vb / mx) * 100 : 0) + '%"></div></div></div>';
+            const bar = (lab, va, vb, mx, col, sub, k) => '<div class="stat-chip mb-3"><div class="flex justify-between text-xs font-bold mb-1"><span class="' + (va > vb ? 'text-blue-600' : '') + '">' + va + (sub ? ' <span class="text-[9px] text-gray-400 font-normal">' + sub + '</span>' : '') + '</span><span class="text-gray-400 uppercase">' + lab + (k && STATS_EXPLAIN[k] ? ' <span class="stat-info cursor-pointer text-gray-300 hover:text-lynx-red" title="Qu\'est-ce que c\'est ?">ⓘ</span>' : '') + '</span><span class="' + (vb > va ? 'text-red-600' : '') + '">' + vb + '</span></div><div class="comp-bar-container"><div class="comp-bar-l ' + col + '" style="width:' + (mx ? (va / mx) * 100 : 0) + '%"></div><div class="comp-bar-r ' + col + '" style="width:' + (mx ? (vb / mx) * 100 : 0) + '%"></div></div>' + (k && STATS_EXPLAIN[k] ? '<div class="stat-exp hidden mt-1 text-[10px] text-gray-500 dark:text-gray-400 leading-snug">' + STATS_EXPLAIN[k] + '</div>' : '') + '</div>';
             const g = (t, f) => (t ? f(t) : '—');
             const respAvg = (t) => (t && t.resp.length ? fmtMMSS(t.resp.reduce((s, v) => s + v, 0) / t.resp.length) : '—');
             const streakTxt = (t) => (!t || t.streak === 0) ? '—' : (t.streak > 0 ? t.streak + 'V' : (-t.streak) + 'D');
@@ -2669,18 +2711,20 @@
             html += bar('Buts encaissés / match', cA.avgGA.toFixed(2), cB.avgGA.toFixed(2), Math.max(cA.avgGA, cB.avgGA, 0.1), 'bg-orange-500');
             html += bar('% victoire', Math.round(cA.winPct) + '%', Math.round(cB.winPct) + '%', 100, 'bg-purple-500');
             html += bar('Points', cA.pts, cB.pts, Math.max(cA.pts, cB.pts, 1), 'bg-blue-500');
-            html += bar('Supériorité (PP)', g(A, t => pctOrDash(t.supG, t.ppOcc)), g(B, t => pctOrDash(t.supG, t.ppOcc)), 100, 'bg-red-500');
-            html += bar('Infériorité (PK)', g(A, t => (t.penN ? Math.round((1 - t.infGa / t.penN) * 100) + '%' : '—')), g(B, t => (t.penN ? Math.round((1 - t.infGa / t.penN) * 100) + '%' : '—')), 100, 'bg-cyan-600');
-            html += bar('Matchs serrés gagnés', g(A, t => (t.closeN ? t.closeW + '/' + t.closeN : '—')), g(B, t => (t.closeN ? t.closeW + '/' + t.closeN : '—')), Math.max(A ? A.closeN : 0, B ? B.closeN : 0, 1), 'bg-amber-500');
-            html += bar('Mené après 2 tiers → victoire', g(A, t => (t.behind2N ? t.behind2W + '/' + t.behind2N : '—')), g(B, t => (t.behind2N ? t.behind2W + '/' + t.behind2N : '—')), Math.max(A ? A.behind2N : 0, B ? B.behind2N : 0, 1), 'bg-pink-500');
-            html += bar('Temps de réponse', respAvg(A), respAvg(B), 60, 'bg-teal-500');
-            html += bar('Égalisations', g(A, t => t.eq), g(B, t => t.eq), Math.max(A ? A.eq : 0, B ? B.eq : 0, 1), 'bg-lime-500');
-            html += bar('Buts 5 dernières min', g(A, t => t.late), g(B, t => t.late), Math.max(A ? A.late : 0, B ? B.late : 0, 1), 'bg-red-700');
-            html += bar('Pénalités / match', g(A, t => (t.rep && t.penN ? (t.penMin / Math.max(t.rep, 1)).toFixed(1) : '—')), g(B, t => (t.rep && t.penN ? (t.penMin / Math.max(t.rep, 1)).toFixed(1) : '—')), 20, 'bg-gray-500');
-            html += bar('Buts solos', g(A, t => t.solo), g(B, t => t.solo), Math.max(A ? A.solo : 0, B ? B.solo : 0, 1), 'bg-slate-500');
-            html += bar('Dépendance top buteur', g(A, t => (t.topScorer ? pctOrDash(t.depW, t.depN) : '—')), g(B, t => (t.topScorer ? pctOrDash(t.depW, t.depN) : '—')), 100, 'bg-indigo-500');
-            html += bar('Série en cours', streakTxt(A), streakTxt(B), 10, 'bg-emerald-500');
-            html += bar('Points réels vs mérités', g(A, t => t.xN ? t.realPts + ' / ' + Math.round(t.xPts) : '—'), g(B, t => t.xN ? t.realPts + ' / ' + Math.round(t.xPts) : '—'), Math.max(A ? A.realPts : 0, B ? B.realPts : 0, 1), 'bg-fuchsia-500');
+            html += bar('Tirs cadrés / match', g(A, t => (t.shotsN ? (t.shotsF / t.shotsN).toFixed(1) : '—')), g(B, t => (t.shotsN ? (t.shotsF / t.shotsN).toFixed(1) : '—')), Math.max(A && A.shotsN ? A.shotsF / A.shotsN : 0, B && B.shotsN ? B.shotsF / B.shotsN : 0, 1), 'bg-sky-500', '', 'shots'); // v2.22 : tirs cadrés exploités
+            html += bar('Efficacité (buts / tir cadré)', g(A, t => (t.shotsN && t.shotsF ? Math.round((t.gfRep / t.shotsF) * 100) + '%' : '—')), g(B, t => (t.shotsN && t.shotsF ? Math.round((t.gfRep / t.shotsF) * 100) + '%' : '—')), 30, 'bg-emerald-600', '', 'eff');
+            html += bar('Supériorité (PP)', g(A, t => (t.ppOcc ? pctOrDash(t.supG, t.ppOcc) : (t.supG ? t.supG + ' SN' : '—'))), g(B, t => (t.ppOcc ? pctOrDash(t.supG, t.ppOcc) : (t.supG ? t.supG + ' SN' : '—'))), 100, 'bg-red-500', '', 'pp');
+            html += bar('Infériorité (PK)', g(A, t => (t.penN ? Math.round((1 - t.infGa / t.penN) * 100) + '%' : (t.infGa ? t.infGa + ' SN' : '—'))), g(B, t => (t.penN ? Math.round((1 - t.infGa / t.penN) * 100) + '%' : (t.infGa ? t.infGa + ' SN' : '—'))), 100, 'bg-cyan-600', '', 'pk');
+            html += bar('Matchs serrés gagnés', g(A, t => (t.closeN ? t.closeW + '/' + t.closeN : '—')), g(B, t => (t.closeN ? t.closeW + '/' + t.closeN : '—')), Math.max(A ? A.closeN : 0, B ? B.closeN : 0, 1), 'bg-amber-500', '', 'close');
+            html += bar('Mené après 2 tiers → victoire', g(A, t => (t.behind2N ? t.behind2W + '/' + t.behind2N : '—')), g(B, t => (t.behind2N ? t.behind2W + '/' + t.behind2N : '—')), Math.max(A ? A.behind2N : 0, B ? B.behind2N : 0, 1), 'bg-pink-500', '', 'comeback');
+            html += bar('Temps de réponse', respAvg(A), respAvg(B), 60, 'bg-teal-500', '', 'resp');
+            html += bar('Égalisations', g(A, t => t.eq), g(B, t => t.eq), Math.max(A ? A.eq : 0, B ? B.eq : 0, 1), 'bg-lime-500', '', 'eq');
+            html += bar('Buts 5 dernières min', g(A, t => t.late), g(B, t => t.late), Math.max(A ? A.late : 0, B ? B.late : 0, 1), 'bg-red-700', '', 'late');
+            html += bar('Pénalités / match', g(A, t => (t.rep && t.penN ? (t.penMin / Math.max(t.rep, 1)).toFixed(1) : '—')), g(B, t => (t.rep && t.penN ? (t.penMin / Math.max(t.rep, 1)).toFixed(1) : '—')), 20, 'bg-gray-500', '', 'pen');
+            html += bar('Buts solos', g(A, t => t.solo), g(B, t => t.solo), Math.max(A ? A.solo : 0, B ? B.solo : 0, 1), 'bg-slate-500', '', 'solo');
+            html += bar('Dépendance top buteur', g(A, t => (t.topScorer ? pctOrDash(t.depW, t.depN) : '—')), g(B, t => (t.topScorer ? pctOrDash(t.depW, t.depN) : '—')), 100, 'bg-indigo-500', '', 'dep');
+            html += bar('Série en cours', streakTxt(A), streakTxt(B), 10, 'bg-emerald-500', '', 'streak');
+            html += bar('Points réels vs mérités', g(A, t => t.xN ? t.realPts + ' / ' + Math.round(t.xPts) : '—'), g(B, t => t.xN ? t.realPts + ' / ' + Math.round(t.xPts) : '—'), Math.max(A ? A.realPts : 0, B ? B.realPts : 0, 1), 'bg-fuchsia-500', '', 'xpts');
             // points pris par adversaire
             const oppList = (t) => (t ? Object.keys(t.vsOpp).sort((a, b) => t.vsOpp[b][0] - t.vsOpp[a][0]).map(o => xmlEsc(o) + ' ' + t.vsOpp[o][0] + ' pts en ' + t.vsOpp[o][1] + ' match(s)').join('<br>') || '—' : '—');
             html += '<div class="grid md:grid-cols-2 gap-3 mt-4 text-xs"><div class="bg-white dark:bg-gray-800 p-3 rounded-lg"><div class="font-black uppercase text-[10px] text-gray-400 mb-1">Points pris par adversaire — ' + xmlEsc(tA) + '</div>' + oppList(A) + '</div><div class="bg-white dark:bg-gray-800 p-3 rounded-lg"><div class="font-black uppercase text-[10px] text-gray-400 mb-1">Points pris par adversaire — ' + xmlEsc(tB) + '</div>' + oppList(B) + '</div></div>';
@@ -2771,6 +2815,7 @@
             let n = 0; try { n = await ffhgArchiveReports(8); } catch (e) { appAlert('❌ ' + (e && e.message ? e.message : e)); return; }
             try { _sstatsCache.at = 0; } catch (e) {}
             appAlert('🎬 ' + n + ' déroulé(s) récupéré(s) au passage.');
+            try { loadLiveReportIds(); } catch (e) {}
             renderFreshness(true);
         }
         async function catchUpAllReports() {
@@ -2787,6 +2832,7 @@
             try { _stCache = { t: 0, v: null }; } catch (e) {}
             if (st) st.textContent = '✅ Terminé — ' + total + ' déroulé(s) enregistré(s).';
             appAlert('🎬 Rattrapage terminé : ' + total + ' déroulé(s) archivé(s). Toutes les stats live (accueil, comparateur, fiche adverse) sont à jour.');
+            try { loadLiveReportIds(); } catch (e) {}
             renderFreshness(true);
         }
 
@@ -2838,6 +2884,62 @@
                     try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); const s = document.getElementById('result-card-clip'); if (s) s.textContent = '✅ Image aussi copiée dans le presse-papiers'; } catch (e) {}
                 });
             } catch (e) {}
+        }
+
+        // --- v2.22 : indicateur « déroulé archivé » sur les lignes de calendrier + rejeu en un clic ---
+        let _liveReportIds = new Set();
+        function repArchived(m) { try { return !!(m && m.id && _liveReportIds.has(m.id)); } catch (e) { return false; } }
+        async function loadLiveReportIds() {
+            try { _liveReportIds = new Set((await dbFetchCol('live-reports')).map(d => d.id)); } catch (e) {}
+            try { scheduleUI(); } catch (e) {} // re-rendu pour poser les badges 🎬
+        }
+        document.addEventListener('click', async (ev) => {
+            const b = ev.target && ev.target.closest ? ev.target.closest('.rep-replay-btn') : null;
+            if (!b) return;
+            ev.preventDefault(); ev.stopPropagation(); // ne déclenche pas la saisie de score de la ligne
+            const id = b.dataset.rep || '';
+            let reps = window._liveReplayReps || [];
+            if (!reps.length || !reps.some(r => r._id === id)) {
+                try { reps = (await dbFetchCol('live-reports')).map(d => ({ ...d.data, _id: d.id }))
+                    .filter(r => r && Array.isArray(r.events) && r.events.length && (!r.season || String(r.season) === String(activeSeason)))
+                    .sort((x, y) => new Date(y.date || 0) - new Date(x.date || 0));
+                    window._liveReplayReps = reps; } catch (e) { reps = []; }
+            }
+            const idx = reps.findIndex(r => r._id === id);
+            if (idx < 0) { appAlert('Déroulé introuvable en base.'); return; }
+            const t = document.querySelector('.main-nav-tab[data-content="live-match"]');
+            if (t) t.click(); else { const sel2 = document.getElementById('mobile-nav-select'); if (sel2) { sel2.value = 'live-match'; sel2.dispatchEvent(new Event('change')); } }
+            setTimeout(() => {
+                const sel3 = document.getElementById('live-replay-select');
+                if (sel3) sel3.value = String(idx);
+                const rb = document.getElementById('live-replay-btn');
+                if (rb) rb.click();
+                else appAlert("Ouvre l'onglet Direct → « Revivre un match » pour rejouer ce déroulé.");
+            }, 300);
+        });
+
+        // --- v2.22 : liens utiles ouverts dans une demi-fenêtre en bas, étirable (iframe) ---
+        function openLinkSheet(url, name) {
+            let sh = document.getElementById('link-sheet');
+            if (!sh) {
+                const st = document.createElement('style'); st.id = 'lynx-sheet-style';
+                st.textContent = '#link-sheet{position:fixed;left:0;right:0;bottom:0;z-index:90;display:none;flex-direction:column;background:#fff;border-top:3px solid #D90429;box-shadow:0 -12px 32px rgba(0,0,0,.3);height:55vh;min-height:180px;max-height:92vh;border-radius:16px 16px 0 0;overflow:hidden}#link-sheet.open{display:flex}#link-sheet-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e5e7eb;font-size:12px;font-weight:800;cursor:ns-resize;user-select:none;touch-action:none}#link-sheet-frame{flex:1;width:100%;border:0;background:#fff}.dark #link-sheet{background:#111827}.dark #link-sheet-bar{background:#1f2937;color:#e5e7eb}';
+                document.head.appendChild(st);
+                sh = document.createElement('div'); sh.id = 'link-sheet';
+                sh.innerHTML = '<div id="link-sheet-bar"><span class="mr-1">⇕</span><span id="link-sheet-title" class="flex-1 truncate"></span><a id="link-sheet-newtab" href="#" target="_blank" rel="noopener" class="text-lynx-red underline font-bold whitespace-nowrap">Le site refuse l\'affichage intégré ? Ouvrir dans un onglet ↗</a><button id="link-sheet-close" class="ml-2 w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 font-black shrink-0" title="Fermer">✕</button></div><iframe id="link-sheet-frame" referrerpolicy="no-referrer"></iframe>';
+                document.body.appendChild(sh);
+                const bar = sh.querySelector('#link-sheet-bar');
+                let y0 = 0, h0 = 0, dragging = false;
+                bar.addEventListener('pointerdown', (e) => { if (e.target.closest('a,button')) return; dragging = true; y0 = e.clientY; h0 = sh.getBoundingClientRect().height; try { bar.setPointerCapture(e.pointerId); } catch (err) {} });
+                bar.addEventListener('pointermove', (e) => { if (!dragging) return; const nh = Math.max(180, Math.min(window.innerHeight * 0.92, h0 + (y0 - e.clientY))); sh.style.height = nh + 'px'; });
+                bar.addEventListener('pointerup', () => { dragging = false; });
+                sh.querySelector('#link-sheet-close').onclick = () => { sh.classList.remove('open'); sh.querySelector('#link-sheet-frame').src = 'about:blank'; };
+            }
+            let dom = ''; try { dom = new URL(url).hostname; } catch (e) {}
+            sh.querySelector('#link-sheet-title').textContent = (name || 'Lien') + (dom ? ' — ' + dom : '');
+            sh.querySelector('#link-sheet-newtab').href = url;
+            sh.querySelector('#link-sheet-frame').src = url;
+            sh.classList.add('open');
         }
 
         // v2.22 : cases de l'accueil réductibles — un chevron sur chaque titre replie/déplie la carte (mémorisé par appareil)
@@ -4623,8 +4725,9 @@
             container.innerHTML = usefulLinks.map(l => {
                 let domain = ""; try { domain = new URL(l.url).hostname; } catch(e){}
                 const favicon = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '';
-                return `<a href="${l.url}" target="_blank" class="p-3 bg-gray-100 dark:bg-gray-800 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition text-center truncate flex items-center justify-center gap-2 border border-transparent hover:border-blue-200">${favicon ? `<img src="${favicon}" class="w-4 h-4 rounded-sm">` : ''}<span class="truncate">${l.name}</span></a>`;
-            }).join(''); 
+                return `<a href="${l.url}" data-url="${xmlEsc(l.url)}" data-name="${xmlEsc(l.name)}" class="p-3 bg-gray-100 dark:bg-gray-800 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition text-center truncate flex items-center justify-center gap-2 border border-transparent hover:border-blue-200">${favicon ? `<img src="${favicon}" class="w-4 h-4 rounded-sm">` : ''}<span class="truncate">${l.name}</span></a>`;
+            }).join('');
+            container.querySelectorAll('a[data-url]').forEach(a => { a.addEventListener('click', (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); try { openLinkSheet(a.dataset.url, a.dataset.name); } catch (err) { window.open(a.dataset.url, '_blank'); } }); }); // v2.22 : demi-fenêtre en bas (Ctrl/maj-clic = nouvel onglet)
             listAdmin.innerHTML = usefulLinks.map((l, i) => `<div class="flex justify-between items-center bg-white dark:bg-gray-700 p-2 rounded text-sm shadow-sm"><div class="truncate flex-1"><span class="font-bold">${l.name}</span> <span class="text-xs text-gray-400 mx-1">${l.url}</span></div><button class="text-red-500 hover:text-red-700 ml-2 delete-link-btn" data-idx="${i}"><i class="fa-solid fa-trash"></i></button></div>`).join(''); 
             document.querySelectorAll('.delete-link-btn').forEach(b => { b.onclick = () => { appConfirm('Supprimer ce lien ?', async () => { const newLinks = [...usefulLinks]; newLinks.splice(b.dataset.idx, 1); await setDoc(doc(db, `${basePath}/settings/general`), { links: newLinks }, {merge:true}); }); }; }); 
         }
@@ -5636,7 +5739,7 @@
                      <div class="bg-gray-100 dark:bg-gray-700 px-3 py-1.5 rounded font-black min-w-[50px] text-center text-base">${score}</div>
                      <div class="flex items-center justify-start flex-1 gap-2"><img src="${getLogo(m.awayTeam)}" class="w-8 h-8 object-contain"><span class="font-bold hidden md:inline ${isLynxInvolved && !isHome?'text-lynx-dark dark:text-white':''}">${m.awayTeam}</span></div>
                 </div>
-                <div class="w-20 md:w-24 shrink-0 flex flex-col items-center justify-center gap-1">${predBadge}${liveJumpBtn}</div>
+                <div class="w-20 md:w-24 shrink-0 flex flex-col items-center justify-center gap-1">${predBadge}${liveJumpBtn}${(hasScore && repArchived(m)) ? `<button class="rep-replay-btn shrink-0 text-[10px] md:text-xs font-bold px-2 py-1 rounded-lg shadow bg-gray-900 hover:bg-black text-white transition" data-rep="${xmlEsc(m.id)}" title="Déroulé archivé en base — rejouer le match (animations plein écran)">🎬 Revoir</button>` : ''}</div>
             </div>`;
         }
         // v2.18 : équipe suivie en direct (vide = les Lynx de Valence) — déclarée au niveau module pour que
@@ -6346,10 +6449,14 @@
         }
 
         // --- Échos presse pour l'IA : sources citées sobrement, forums étiquetés comme avis, rumeurs à corroborer ---
-        function buildPressContext(maxDays, maxItems) {
+        function buildPressContext(maxDays, maxItems, matchId) {
             try {
                 const cutoff = Date.now() - (maxDays || 7) * 24 * 3600 * 1000;
-                const items = rssItems.filter(i => i && i.title && new Date(i.pubDate).getTime() >= cutoff).slice(0, maxItems || 8);
+                // v2.22 : échos presse collés à la main (collection press-clips) — affectés à un match précis
+                // ou généraux ; ils passent en premier dans le contexte IA, avec la source.
+                const clips = (pressClips || []).filter(c => c && c.title && (!c.matchId || (matchId && String(c.matchId) === String(matchId))) && (!c.date || isFinite(new Date(c.date).getTime())));
+                const items = [...clips.map(c => ({ title: c.title, description: c.excerpt || '', source: c.source || 'presse (collé)' })),
+                    ...rssItems.filter(i => i && i.title && new Date(i.pubDate).getTime() >= cutoff)].slice(0, maxItems || 8);
                 if (!items.length) return '';
                 return items.map(i => {
                     const src = i.source || 'presse';
@@ -6462,7 +6569,14 @@
                     if (tr.rows.length >= 2) pronTxt += 'Bilan des pronostics vérifiés : **' + tr.ok + ' réussis / ' + tr.ko + ' ratés** (' + tr.pct + ' %).';
                     if (pronTxt) pronTxt = '### Notre pronostic\n' + pronTxt + '\n';
                 } catch (e) { console.warn('bilan pronostic', e); }
-                const pressTxt = buildPressContext(5, 8); // échos presse récents : citation sobre, opinions nuancées, rumeurs interdites
+                // v2.22 : stats live de saison injectées dans le prompt (fiables, calculées par le site)
+                let liveStatsTxt = '';
+                try {
+                    const S = await seasonLiveStats();
+                    const L = S.lx, O = S.teams.find(t => normalize(t.name) === normalize(opp));
+                    if (L && L.rep) liveStatsTxt = `Lynx : PP ${L.supG}/${L.ppOcc} (${L.ppOcc ? Math.round(L.supG / L.ppOcc * 100) : 0}%), PK tué ${L.penN ? Math.round((1 - L.infGa / L.penN) * 100) : 0}%, matchs serrés ${L.closeW}/${L.closeN}, temps de réponse moyen ${L.resp.length ? fmtMMSS(L.resp.reduce((s, v) => s + v, 0) / L.resp.length) : 'n/d'}, série en cours ${L.streak > 0 ? L.streak + ' victoires' : (L.streak < 0 ? (-L.streak) + ' défaites' : 'n/d')}, points réels ${L.realPts} vs mérités ${Math.round(L.xPts)}` + (O && O.rep ? ` | ${opp} : PP ${O.supG}/${O.ppOcc}, PK tué ${O.penN ? Math.round((1 - O.infGa / O.penN) * 100) : 0}%, matchs serrés ${O.closeW}/${O.closeN}` : '');
+                } catch (e) {}
+                const pressTxt = buildPressContext(5, 8, m.id); // échos presse récents + collés à la main : citation sobre
                 let dayTxt = '';
                 try { // v2.21 : contexte journée — les autres résultats du jour, pour situer l'impact au classement
                     const sameDay = allMatches.filter(x => x && x.id !== m.id && x.season === m.season && isMatchFinished(x) && (!x.type || x.type === 'Saison') && new Date(x.date).toDateString() === new Date(m.date).toDateString());
@@ -6473,7 +6587,7 @@
                 let aiTxt = null;
                 try {
                     aiTxt = await aiCompose(
-                        `Rédige l'article du match de hockey : Lynx de Valence ${lSc}-${oSc} ${opp}${prol ? ' (après prolongation)' : ''}, ${phase}, le ${new Date(m.date).toLocaleDateString('fr-FR')} (saison ${activeSeason}).${m.note ? ' Note de match : ' + m.note : ''}\n\nContexte classement :\n${rankTxt || 'Classement non applicable (playoffs/maintien).'}\n\nAutres résultats du jour (contexte journée — sers-t'en pour dire sobrement ce que ce résultat change pour les Lynx au classement, sans rien inventer) :\n${dayTxt || 'aucun autre match joué ce jour — n\'en parle pas.'}\n\nDéroulé réel du match (chronologie des buts et pénalités — SEULE source autorisée sur les joueurs) :\n${gameTxt || 'Déroulé détaillé NON DISPONIBLE : n\'évoque alors AUCUN buteur, AUCUN nom de joueur et AUCUNE action précise du match.'}\n\nVérification de notre pronostic (mentionne-la honnêtement dans l'article, réussi ou raté) :\n${pronTxt || 'Aucun pronostic n\'avait été publié pour ce match : n\'en parle pas.'}\n\nÉchos presse éventuels (citation sobre, 1 mention maximum, cf. règles presse/forums) :\n${pressTxt || 'aucun — n\'en parle pas.'}`,
+                        `Rédige l'article du match de hockey : Lynx de Valence ${lSc}-${oSc} ${opp}${prol ? ' (après prolongation)' : ''}, ${phase}, le ${new Date(m.date).toLocaleDateString('fr-FR')} (saison ${activeSeason}).${m.note ? ' Note de match : ' + m.note : ''}\n\nContexte classement :\n${rankTxt || 'Classement non applicable (playoffs/maintien).'}\n\nAutres résultats du jour (contexte journée — sers-t'en pour dire sobrement ce que ce résultat change pour les Lynx au classement, sans rien inventer) :\n${dayTxt || 'aucun autre match joué ce jour — n\'en parle pas.'}\n\nStats live de saison (calculées par le site à partir des déroulés archivés — fiables, tu peux t\'en servir) :\n${liveStatsTxt || 'aucune disponible — n\'en parle pas.'}\n\nDéroulé réel du match (chronologie des buts et pénalités — SEULE source autorisée sur les joueurs) :\n${gameTxt || 'Déroulé détaillé NON DISPONIBLE : n\'évoque alors AUCUN buteur, AUCUN nom de joueur et AUCUNE action précise du match.'}\n\nVérification de notre pronostic (mentionne-la honnêtement dans l'article, réussi ou raté) :\n${pronTxt || 'Aucun pronostic n\'avait été publié pour ce match : n\'en parle pas.'}\n\nÉchos presse éventuels (citation sobre, 1 mention maximum, cf. règles presse/forums) :\n${pressTxt || 'aucun — n\'en parle pas.'}`,
                         `Tu es le rédacteur du site officiel des Lynx de Valence (hockey sur glace, France). Rédige un article de match vivant de 120 à 200 mots, en français, ton passionné, en Markdown sans titre ni heading. RÈGLE ABSOLUE — AUCUNE INVENTION : ne cite un joueur, un buteur, un temps de but, une assist ou un événement QUE s'il figure mot pour mot dans les données fournies (déroulé, classement, note de match). Si le déroulé est marqué NON DISPONIBLE, n'évoque aucun buteur ni aucune action précise et appuie-toi uniquement sur le score et le contexte. Ne fais aucune recherche internet et n'ajoute aucune donnée externe : les seules informations autorisées sont celles de ce message. Un article sobre mais exact vaut mille fois mieux qu'un article vivant mais faux.\n\n${PRESS_RULES}`
                     );
                 } catch (e) { aiTxt = null; }
@@ -6582,14 +6696,21 @@
                         trackTxt = `### Bilan des pronostics du site\n${tr.ok} pronostics réussis, ${tr.ko} ratés (${tr.pct} % de réussite) sur ${tr.rows.length} matchs vérifiés.` + splitTxt + (fc && fc.reliability ? ` Le backtest du modèle statistique donne ${(fc.reliability * 100).toFixed(0)} % de fiabilité sur les matchs déjà joués.` : '') + (misses.length ? `\nDerniers pronostics ratés : ${misses.join(' ; ')}. Tire-en les leçons : si les erreurs se répètent, nuance ton pronostic.\n\n` : '\n\n');
                     }
                 } catch (e) { trackTxt = ''; }
-                const pressTxt = buildPressContext(8, 8); // échos presse/forums récents : prudence et citation
+                // v2.22 : stats live de saison injectées dans le prompt (fiables, calculées par le site)
+                let liveStatsTxt = '';
+                try {
+                    const S = await seasonLiveStats();
+                    const L = S.lx, O = S.teams.find(t => normalize(t.name) === normalize(opp));
+                    if (L && L.rep) liveStatsTxt = `Lynx : forme ${L.form.slice(-5).join(' ') || 'n/d'}, buts/match ${L.mj ? (L.gf / L.mj).toFixed(2) : 'n/d'}, encaissés/match ${L.mj ? (L.ga / L.mj).toFixed(2) : 'n/d'}, PP ${L.supG}/${L.ppOcc}, PK tué ${L.penN ? Math.round((1 - L.infGa / L.penN) * 100) : 0}%, matchs serrés ${L.closeW}/${L.closeN}, série en cours ${L.streak > 0 ? L.streak + ' victoires' : (L.streak < 0 ? (-L.streak) + ' défaites' : 'n/d')}` + (O ? ` | ${opp} : forme ${O.form.slice(-5).join(' ') || 'n/d'}, buts/match ${O.mj ? (O.gf / O.mj).toFixed(2) : 'n/d'}, encaissés/match ${O.mj ? (O.ga / O.mj).toFixed(2) : 'n/d'}, PP ${O.supG}/${O.ppOcc}, PK tué ${O.penN ? Math.round((1 - O.infGa / O.penN) * 100) : 0}%, matchs serrés ${O.closeW}/${O.closeN}, meilleur buteur ${O.topScorer || 'n/d'} (${O.topScorerGoals || 0} buts)` : '');
+                } catch (e) {}
+                const pressTxt = buildPressContext(8, 8, m.id); // échos presse/forums récents + collés à la main
                 const when = new Date(m.date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
                 const title = `Prochain match : ${isHome ? 'Lynx de Valence vs ' + opp : opp + ' vs Lynx de Valence'}`;
                 const fallback = `Rendez-vous **${when}** ${isHome ? 'à domicile' : 'en déplacement'} ! Face à **${opp}**, les Lynx auront à cœur de continuer leur saison.\n\n${statsTxt}\n\n${trackTxt}${trendTxt}*Article généré automatiquement par le site.*`;
                 let aiTxt = null;
                 try {
                     aiTxt = await aiCompose(
-                        `Rédige l'avant-match du prochain match des Lynx de Valence : ${m.homeTeam} vs ${m.awayTeam}, le ${when} (${isHome ? 'à domicile' : 'en déplacement'}), saison ${activeSeason}. Pronostic du modèle interne : ${statsTxt}\n\nDonnées internes du site :\n${trendTxt || 'aucune donnée interne disponible'}\n${trackTxt || ''}${pressTxt ? 'Échos presse et forums récents (citation sobre, cf. règles presse/forums) :\n' + pressTxt + '\n\n' : ''}Compare les deux équipes (forme, classement, forces et faiblesses, enjeux) en t'appuyant UNIQUEMENT sur les données internes fournies ci-dessus. ⚠️ Lis les étiquettes : « Forme récente de Nantes » parle de NANTES, « Concurrents directs au classement » liste le dernier match DE CHAQUE CONCURRENT (ex. « Caen : dernier match Caen 3-2 après prolongation Meudon » = un match DE CAEN contre Meudon, pas un match des Lynx) — n'attribue jamais ces matchs aux Lynx. Si un bilan de pronostics est fourni, mentionne-le en une phrase et montre que tu en tires les leçons (humilité si le modèle s'est trompé récemment). Rédige une analyse de 120 à 200 mots qui se termine par une phrase de pronostic claire qui reprend le pourcentage et le score du modèle sans jamais les contredire.`,
+                        `Rédige l'avant-match du prochain match des Lynx de Valence : ${m.homeTeam} vs ${m.awayTeam}, le ${when} (${isHome ? 'à domicile' : 'en déplacement'}), saison ${activeSeason}. Pronostic du modèle interne : ${statsTxt}\n\nDonnées internes du site :\n${trendTxt || 'aucune donnée interne disponible'}\n${liveStatsTxt ? 'Stats live de saison (calculées par le site — fiables) :\n' + liveStatsTxt + '\n\n' : ''}${trackTxt || ''}${pressTxt ? 'Échos presse et forums récents (citation sobre, cf. règles presse/forums) :\n' + pressTxt + '\n\n' : ''}Compare les deux équipes (forme, classement, forces et faiblesses, enjeux) en t'appuyant UNIQUEMENT sur les données internes fournies ci-dessus. ⚠️ Lis les étiquettes : « Forme récente de Nantes » parle de NANTES, « Concurrents directs au classement » liste le dernier match DE CHAQUE CONCURRENT (ex. « Caen : dernier match Caen 3-2 après prolongation Meudon » = un match DE CAEN contre Meudon, pas un match des Lynx) — n'attribue jamais ces matchs aux Lynx. Si un bilan de pronostics est fourni, mentionne-le en une phrase et montre que tu en tires les leçons (humilité si le modèle s'est trompé récemment). Rédige une analyse de 120 à 200 mots qui se termine par une phrase de pronostic claire qui reprend le pourcentage et le score du modèle sans jamais les contredire.`,
                         `Tu es le pronostiqueur du site officiel des Lynx de Valence (hockey sur glace, France). Rédige en français, ton passionné mais nuancé, en Markdown sans titre ni heading ni préambule. RÈGLE ABSOLUE — AUCUNE INVENTION : n'invente aucun nom de joueur, aucune blessure, aucune info d'actualité ou de mercato. Les seules données autorisées sont celles fournies dans le message (équipes, classement, forme, confrontations, modèle statistique). Une info manquante = on n'en parle pas. N'attribue JAMAIS à une équipe les résultats d'une autre : chaque donnée est étiquetée avec l'équipe qu'elle concerne, et elle ne concerne qu'elle — si la forme des Lynx n'est pas fournie, tu n'écris AUCUN résultat des Lynx.\n\nRÈGLES PRONOSTIC — Le score probable « X-Y » signifie TOUJOURS X buts pour les Lynx et Y buts pour l'adversaire : ne l'inverse jamais et ne le reformule pas dans l'autre sens. INTERDICTION DE CONTREDIRE LE MODÈLE : si le modèle donne moins de 50 % de chances de victoire aux Lynx, tu n'as pas le droit de prédire une victoire des Lynx comme issue probable, ni de l'espérer en conclusion. Ta dernière phrase de pronostic doit reprendre EXACTEMENT le pourcentage et le score probable du modèle, sans les arrondir ni les contredire (ex. : « le modèle donne 34 % de chances aux Lynx, score probable 2-3 — exploit possible, mais pas de favori »).\n\n${PRESS_RULES}`
                     );
                 } catch (e) { aiTxt = null; }
@@ -7094,13 +7215,15 @@ ${cards}
             (u) => u, // essai direct : certains flux (Bluesky, forums...) autorisent déjà le CORS
             (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
             (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-            (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`
+            (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+            (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, // variante JSON {contents} — gérée plus bas
+            (u) => `https://r.jina.ai/${u}` // extracteur de page : passe souvent là où les sites bloquent les proxys classiques
         ];
         async function fetchFeedText(url) {
             for (const mk of RSS_PROXIES) {
                 try {
                     const r = await fetch(mk(url), { signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined });
-                    if (r.ok) { const t = await r.text(); if (t && t.length > 60) return t; }
+                    if (r.ok) { let t = await r.text(); if (t && t.length > 60) { try { const j = JSON.parse(t); if (j && typeof j.contents === 'string' && j.contents.length > 60) t = j.contents; } catch (e) {} return t; } }
                 } catch (e) { /* proxy suivant */ }
             }
             throw new Error('Flux inaccessible (CORS/proxy)');
@@ -7147,7 +7270,10 @@ ${cards}
         }
         function keywordMatch(item, feed) {
             const fk = feed && feed.kws ? String(feed.kws).split(/[;,]/).map(s => s.trim()).filter(Boolean) : null;
-            const kws = [...(fk && fk.length ? fk : rssKeywords), ...rssDynKws];
+            // v2.22 : les mots-clés « prochain adversaire » ne passent PLUS sur les flux qui ont leurs propres
+            // restrictions (kws) — ils ne s'ajoutent qu'aux flux au filtre global, sinon les restrictions
+            // individuelles étaient ignorées pour ces articles.
+            const kws = [...(fk && fk.length ? fk : rssKeywords), ...((fk && fk.length) ? [] : rssDynKws)];
             const hay = normalize(item.title + ' ' + (item.description || '').replace(/<[^>]*>/g, ' '));
             return kws.filter(k => k && k.trim() && hay.includes(normalize(k)));
         }
@@ -7378,12 +7504,13 @@ ${cards}
             if (pt.lastError) rows.push(`<div class="p-2 rounded bg-orange-100 dark:bg-orange-900/30 text-[11px] leading-relaxed"><b>⚠️ Dernier test push — erreur de l'action :</b> ${xmlEsc(pt.lastError)}</div>`);
             if (h.feedsFailed) rows.push(`<div class="p-2 rounded bg-orange-100 dark:bg-orange-900/30 text-[11px] leading-relaxed"><b>⚠️ Flux externes en échec :</b> ${xmlEsc(h.feedsFailed)}</div>`);
             el.innerHTML = rows.join('');
+            try { scheduleFreshness(); } catch (e) {} // v2.22 : contrôle de fraîcheur (throttlé 60 s)
         }
         function renderRssSection() {
             const listEl = document.getElementById('rss-items-list');
             const filterSel = document.getElementById('rss-source-filter');
             if (!listEl) return;
-            if (!rssItems.length) {
+            if (!rssItems.length && !(pressClips || []).length) {
                 listEl.innerHTML = '<div class="bg-white/70 dark:bg-dark-card/70 p-6 rounded-xl shadow-xl text-center text-gray-500 italic">Aucune actualité enregistrée. Cliquez sur "Analyser les flux" (ou configurez flux et mots-clés dans Admin → RSS).</div>';
                 return;
             }
@@ -7395,9 +7522,30 @@ ${cards}
             const rfEl = document.getElementById('rss-read-filter');
             const readF = rfEl ? (rfEl.value || 'all') : 'all';
             if (rfEl) { const nT = rssItems.filter(i => i.title).length; const nU = rssItems.filter(i => i.title && isItemUnread(i.id, i.pubDate || i.fetchedAt)).length; const cur2 = rfEl.value || 'all'; rfEl.innerHTML = `<option value="all">Tous (${nT})</option><option value="unread">● Non lus (${nU})</option><option value="read">✓ Lus (${nT - nU})</option>`; rfEl.value = cur2; if (!rfEl._wired) { rfEl._wired = true; rfEl.onchange = () => renderRssSection(); } }
+            // v2.22 : échos presse collés à la main — affichés en tête des actus, lien vers la source
+            const clipForm = document.getElementById('press-clip-form');
+            if (clipForm && !clipForm._wired) {
+                clipForm._wired = true;
+                clipForm.onsubmit = async (e) => {
+                    e.preventDefault();
+                    const title = document.getElementById('clip-title').value.trim();
+                    if (!title) return;
+                    const cData = { title, source: document.getElementById('clip-source').value.trim() || 'presse', url: document.getElementById('clip-url').value.trim(), excerpt: document.getElementById('clip-excerpt').value.trim(), matchId: document.getElementById('clip-match').value || null, date: new Date().toISOString() };
+                    try { await setDoc(doc(db, `${basePath}/press-clips/${hashId(title + Date.now())}`), cData); clipForm.reset(); appAlert('📌 Écho enregistré : visible dans les actus et utilisé par les articles IA (source citée).'); } catch (err) { appAlert('Erreur : ' + err.message); }
+                };
+            }
+            const clipSel = document.getElementById('clip-match');
+            if (clipSel) {
+                const keep = clipSel.value;
+                const vMatches = (allMatches || []).filter(m => m.season === activeSeason && (normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence'))).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 30);
+                const sig = vMatches.length;
+                if (clipSel._sig !== sig) { clipSel._sig = sig; clipSel.innerHTML = '<option value="">Général (tous les articles)</option>' + vMatches.map(m => `<option value="${m.id}">${new Date(m.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} — ${xmlEsc(m.homeTeam)} vs ${xmlEsc(m.awayTeam)}</option>`).join(''); }
+                clipSel.value = keep;
+            }
+            const clipsHtml = (pressClips || []).length ? '<div class="text-[10px] font-black uppercase tracking-wider text-purple-500 mt-1 mb-1">📌 Échos presse ajoutés à la main</div>' + pressClips.map(c => `<div class="bg-white/70 dark:bg-dark-card/70 p-4 rounded-xl shadow-md border-l-4 border-purple-500"><div class="flex justify-between items-start gap-2"><a href="${xmlEsc(c.url || '#')}" target="_blank" rel="noopener" class="font-bold hover:text-purple-600">📌 ${xmlEsc(c.title)}</a><span class="text-[10px] text-gray-400 whitespace-nowrap flex items-center gap-1">${c.date ? new Date(c.date).toLocaleDateString('fr-FR') : ''}${(!adminPassHash || adminUnlocked()) ? `<button class="delete-clip-btn text-red-400 hover:text-red-600" data-id="${c.id}" title="Supprimer"><i class="fa-solid fa-trash"></i></button>` : ''}</span></div>${c.excerpt ? `<div class="text-xs text-gray-500 mt-1 line-clamp-2">${xmlEsc(c.excerpt)}</div>` : ''}<div class="flex flex-wrap gap-1 mt-2 items-center"><span class="text-[9px] font-bold uppercase bg-purple-100 dark:bg-purple-900/40 px-2 py-0.5 rounded-full text-purple-600 dark:text-purple-300">${xmlEsc(c.source || 'presse')}</span>${c.matchId ? '<span class="text-[9px] font-bold bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full text-gray-500">match ciblé</span>' : ''}</div></div>`).join('') : '';
             const items = rssItems.filter(i => i.title && (!src || i.source === src) && (!q || normalize(i.title + ' ' + (i.description || '')).includes(q)) && (readF === 'all' || (readF === 'unread' ? isItemUnread(i.id, i.pubDate || i.fetchedAt) : !isItemUnread(i.id, i.pubDate || i.fetchedAt)))).sort((a, b) => new Date(b.pubDate || b.fetchedAt || 0) - new Date(a.pubDate || a.fetchedAt || 0));
             const unreadRss = rssItems.filter(i => isItemUnread(i.id, i.pubDate || i.fetchedAt)).length;
-            listEl.innerHTML = (unreadRss ? `<button id="rss-mark-all" class="w-full py-2 mb-2 text-xs font-bold text-gray-400 hover:text-lynx-red transition"><i class="fa-solid fa-check-double mr-1"></i>Tout marquer lu (${unreadRss})</button>` : '') + (items.length ? items.map(i => `
+            listEl.innerHTML = clipsHtml + (unreadRss ? `<button id="rss-mark-all" class="w-full py-2 mb-2 text-xs font-bold text-gray-400 hover:text-lynx-red transition"><i class="fa-solid fa-check-double mr-1"></i>Tout marquer lu (${unreadRss})</button>` : '') + (items.length ? items.map(i => `
                 <div class="bg-white/70 dark:bg-dark-card/70 p-4 rounded-xl shadow-md border-l-4 border-lynx-red rss-item-card cursor-pointer hover:shadow-lg transition" data-id="${i.id}">
                     <div class="flex justify-between items-start gap-2">
                         <a href="${i.link}" target="_blank" class="font-bold hover:text-lynx-red" onclick="event.stopPropagation()">${isItemUnread(i.id, i.pubDate || i.fetchedAt) ? '<span class="inline-block w-2 h-2 rounded-full bg-lynx-red mr-1.5" title="Non lu"></span>' : '<span class="text-gray-300 mr-1.5 font-bold" title="Lu">✓</span>'}${i.title}</a>
@@ -7418,6 +7566,7 @@ ${cards}
                 toggleModal('news-modal', true);
             });
             document.querySelectorAll('.delete-rssitem-btn').forEach(b => b.onclick = (e) => { e.stopPropagation(); appConfirm('Supprimer cet item de presse ?', async () => { try { await deleteDoc(doc(db, `${basePath}/rss-items/${b.dataset.id}`)); } catch (err) {} }); });
+            document.querySelectorAll('.delete-clip-btn').forEach(b => b.onclick = (e) => { e.stopPropagation(); appConfirm('Supprimer cet écho presse ?', async () => { try { await deleteDoc(doc(db, `${basePath}/press-clips/${b.dataset.id}`)); } catch (err) {} }); });
             document.querySelectorAll('.share-rss-btn').forEach(b => b.onclick = (e) => { e.stopPropagation(); const it = rssItems.find(x => x.id === b.dataset.id); if (it) shareRssItem(it); });
             const bRssMarkAll = document.getElementById('rss-mark-all'); if (bRssMarkAll) bRssMarkAll.onclick = () => markAllRssRead();
             updateUnreadBadges();
@@ -7430,6 +7579,12 @@ ${cards}
             const kwList = document.getElementById('admin-rss-keywords');
             if (kwList) {
                 kwList.innerHTML = rssKeywords.map((k, i) => `<span class="flex items-center gap-2 bg-lynx-red text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm">#${k}<button class="delete-rss-keyword-btn opacity-70 hover:opacity-100" data-idx="${i}" title="Retirer"><i class="fa-solid fa-times"></i></button></span>`).join('');
+            }
+            // v2.22 : liste des échos presse collés à la main
+            const clipsList = document.getElementById('press-clips-list');
+            if (clipsList) {
+                clipsList.innerHTML = (pressClips || []).length ? pressClips.map(c => `<div class="flex justify-between items-start gap-2 bg-white dark:bg-gray-700 p-2 rounded text-sm shadow-sm"><div class="flex-1 truncate"><span class="font-bold">📌 ${xmlEsc(c.title)}</span> <span class="text-xs text-gray-400">— ${xmlEsc(c.source || 'presse')}${c.matchId ? ' · match ciblé' : ' · général'}</span></div><button class="delete-clip-btn-admin text-red-500 hover:text-red-700 p-1 shrink-0" data-id="${c.id}" title="Supprimer"><i class="fa-solid fa-trash"></i></button></div>`).join('') : '<div class="text-xs text-gray-400 italic">Aucun écho collé pour l\'instant.</div>';
+                clipsList.querySelectorAll('.delete-clip-btn-admin').forEach(b => b.onclick = () => appConfirm('Supprimer cet écho presse ?', async () => { try { await deleteDoc(doc(db, `${basePath}/press-clips/${b.dataset.id}`)); } catch (err) {} }));
             }
             // v2.18 : affichage du filtre « prochain adversaire » et des alias d'équipes
             const dynEl = document.getElementById('rss-dyn-kws');
@@ -7980,6 +8135,7 @@ ${cards}
             onSnapshot(collection(db, `${basePath}/scout`), (s) => { scoutDocs = {}; s.docs.forEach(d => { scoutDocs[d.id] = d.data(); }); }); // v2.18 : scouting auto des effectifs adverses (récolté sur les matchs suivis en direct)
             onSnapshot(doc(db, `${basePath}/settings/health`), (d) => { actionHealth = d.exists() ? d.data() : null; try { renderDiagPanel(); } catch(e) {} });
             onSnapshot(doc(db, `${basePath}/settings/push-test`), (d) => { pushTestState = d.exists() ? d.data() : null; try { renderDiagPanel(); } catch(e) {} });
+            onSnapshot(collection(db, `${basePath}/press-clips`), (s) => { pressClips = s.docs.map(d => ({ ...d.data(), id: d.id })); try { renderRssSection(); } catch (e) {} }); // v2.22 : échos presse collés à la main
             let ppInit = false;
             onSnapshot(doc(db, `${basePath}/settings/player-photos`), (d) => { const ppTxt = d.exists() ? (d.data().text || '') : ''; playerPhotos = parsePlayerPhotos(ppTxt); if (!ppInit) { ppInit = true; const ppTa = document.getElementById('player-photos-text'); if (ppTa) ppTa.value = ppTxt; } scheduleUI(); });
             onSnapshot(doc(db, `${basePath}/settings/bot`), (docSnap) => { if(docSnap.exists()) botSettings = docSnap.data(); else botSettings = { tone: 'fan' }; scheduleUI(); }); 
@@ -9759,7 +9915,7 @@ ${cards}
             async function populateLiveReplay() {
                 try {
                     const sel = document.getElementById('live-replay-select'); if (!sel) return;
-                    const reps = (await dbFetchCol('live-reports')).map(d => d.data)
+                    const reps = (await dbFetchCol('live-reports')).map(d => ({ ...d.data, _id: d.id }))
                         .filter(r => r && Array.isArray(r.events) && r.events.length && (!r.season || String(r.season) === String(activeSeason)))
                         .sort((x, y) => new Date(y.date || 0) - new Date(x.date || 0));
                     const keep = sel.value;
@@ -10229,6 +10385,7 @@ ${cards}
                 replayMatchReport(r);
             };
             populateLiveReplay();
+            try { loadLiveReportIds(); } catch (e) {} // v2.22 : ids des déroulés archivés → badges 🎬 du calendrier
             populateFixRep();
             if (!liveDetectTried) { liveDetectTried = true; setTimeout(() => { const li0 = document.getElementById('live-match-url'); if (li0 && !li0.value.trim()) liveAutoDetect().catch(() => {}); }, 3000); }
             // ---- v2.13 : mode patinoire — écran allumé pendant le direct (Screen Wake Lock) ----
