@@ -3214,6 +3214,7 @@
             if (titlesCont) {
                 titlesCont.innerHTML = `<h3 class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">Titres de la saison</h3><div class="grid grid-cols-2 md:grid-cols-4 gap-2">${T.map(t => `<button class="title-chip text-left p-2 rounded-lg bg-white/80 dark:bg-gray-800/80 shadow border-l-4 border-purple-500 hover:shadow-md transition" data-team="${xmlEsc(t.team)}"><div class="text-[10px] font-black uppercase text-gray-400 truncate">${t.icon} ${xmlEsc(t.label)}</div><div class="text-xs font-black truncate">${xmlEsc(t.team)}</div><div class="text-[10px] text-gray-400 truncate">${xmlEsc(t.val)}</div></button>`).join("")}</div>`;
             }
+            }
         let _atSort = { k: "pts", dir: -1 };
         async function renderAllTeams() {
             const anchor = document.getElementById("home-extremes-container");
@@ -11068,6 +11069,7 @@ ${cards}
                     else appAlert('🔄 Récupération FFHG terminée.\n\n✅ ' + out.filled + ' résultat(s) ajouté(s) au calendrier\n🆕 ' + out.created + ' match(s) manquant(s) recréé(s)\n🎬 ' + out.reports + ' déroulé(s) archivé(s) (la base se complète par tranches à chaque clic — toute la saison est balayée)' + (out.diverge.length ? '\n\n⚠️ Divergences (score saisi ≠ FFHG — RIEN modifié, à vérifier) :\n' + out.diverge.join('\n') : ''));
                 }
                 return out;
+            }
             }
             async function ffhgArchiveReports(maxN) {
                 let n = 0;
