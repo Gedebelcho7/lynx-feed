@@ -224,8 +224,6 @@
         @keyframes matchdayPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.75); } }
         .matchday-pulse { animation: matchdayPulse 1.5s ease-in-out infinite; }
         body.matchday #dynamic-background { background: radial-gradient(ellipse 90% 60% at 50% 0%, rgba(190, 18, 60, .16), transparent 65%); }
-        body.matchday #home-extremes-container { display: none; }
-        body.matchday #home-series-container { display: none; }
         .matchday-hero { background: linear-gradient(135deg, #1a0508 0%, #4c0519 45%, #7f1d1d 100%); }
 
         /* Animations immersives plein écran (live, v2.13) */
@@ -486,9 +484,15 @@
                         <div id="home-series"></div>
                     </div>
 
-                    <!-- EXTREMES WIDGET -->
-                    <div id="home-extremes-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-purple-500">
-                        <h3 id="home-extremes-title" class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">Les Extrêmes (Poule B)</h3>
+<!-- TITRES DE LA SAISON (visible H24) -->
+<div id="home-titles-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-yellow-500">
+    <h3 class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">🏆 Titres de la saison</h3>
+    <div id="home-titles"></div>
+</div>
+
+<!-- EXTREMES WIDGET -->
+<div id="home-extremes-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-purple-500">
+    <h3 id="home-extremes-title" class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">Les Extrêmes (Poule B)</h3>
                         <div class="grid grid-cols-2 gap-3 text-center">
                             <div class="p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-100 dark:border-green-900/30">
                                 <div class="text-[10px] uppercase font-bold text-green-600 mb-1"><i class="fa-solid fa-fire mr-1"></i>Top Attaque</div>
@@ -1682,11 +1686,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "";
+        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "";
+        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -3306,7 +3310,9 @@
                 const h = r.homeTeam || '', a = r.awayTeam || '';
                 if (r.ffhgId) _repIdByMatch['ffhg-' + r.ffhgId] = d.id;
                 // on ignore les rapports incomplets (« Domicile/Visiteur ») pour la clé par équipes — mais l'id reste connu
-                if (h && a && h !== 'Domicile' && a !== 'Visiteur') {
+                if (h && a && h !== 'Domicile' && h !== 'Visiteur' && a !== 'Domicile' && a !== 'Visiteur' &&
+    (r.scoreHome != null && r.scoreAway != null &&
+    (Number(r.scoreHome) > 0 || Number(r.scoreAway) > 0 || (r.events && r.events.length > 0)))) {
                     const day = String(r.date || d.id).slice(0, 10);
                     _repIdByMatch[repKey(h, a, day)] = d.id;
                     _repIdByMatch[repKey(a, h, day)] = d.id;
@@ -3330,7 +3336,9 @@
             if (idx < 0) { appAlert('Déroulé introuvable en base.'); return; }
             // v2.22-b : réparation auto d'un rapport incomplet (noms « Domicile/Visiteur », score vide) — on recolle les vraies équipes et le vrai score du calendrier avant de rejouer
             const rp = reps[idx];
-            if (rp && (!rp.homeTeam || rp.homeTeam === 'Domicile' || rp.awayTeam === 'Visiteur')) {
+            if (rp && (!rp.homeTeam || !rp.awayTeam || rp.homeTeam === 'Domicile' || rp.homeTeam === 'Visiteur' ||
+    rp.awayTeam === 'Domicile' || rp.awayTeam === 'Visiteur' ||
+    (Number(rp.scoreHome) === 0 && Number(rp.scoreAway) === 0 && (!rp.events || rp.events.length === 0)))) {
                 const mm = (allMatches || []).find(m => m && repForMatch(m) === rp._id);
                 if (mm) {
                     try {
@@ -4751,6 +4759,33 @@
             return ''; 
         }
 
+                // --- NEW: RENDER TITLES WIDGET ---
+        function renderTitles() {
+            const container = document.getElementById('home-titles-container');
+            if (!container) return;
+            container.classList.remove('hidden');
+            const el = document.getElementById('home-titles');
+            if (!el) return;
+            try {
+                const season = activeSeason;
+                const titles = [];
+                const ranking = [...(mainRanking || [])].filter(t => t.season === season);
+                const lynx = ranking.find(t => normalize(t.team).includes('valence'));
+                if (lynx && ranking.length) {
+                    const sorted = [...ranking].sort((a, b) => (b.pts || 0) - (a.pts || 0));
+                    const lynxIdx = sorted.findIndex(t => normalize(t.team).includes('valence'));
+                    if (lynxIdx >= 0) {
+                        if (lynxIdx === 0) titles.push('🥇 Champion de la poule');
+                        else if (lynxIdx === 1) titles.push('🥈 Vice-champion de la poule');
+                        else if (lynxIdx === 2) titles.push('🥉 3ème de la poule');
+                    }
+                    if (lynx.bp > 0 && sorted.every(t => (t.bp || 0) <= lynx.bp)) titles.push('🎯 Meilleure attaque');
+                    if (lynx.bc >= 0 && sorted.every(t => (t.bc || 999) >= lynx.bc)) titles.push('🛡️ Meilleure défense');
+                }
+                el.innerHTML = titles.length ? titles.map(t => `<div class="text-center p-2">${t}</div>`).join('') : '<div class="text-center p-2 text-gray-400">Aucun titre encore</div>';
+            } catch (e) { el.innerHTML = '<div class="text-center p-2 text-gray-400">Chargement...</div>'; }
+        }
+
         // --- NEW: RENDER HOME EXTREMES WIDGET ---
         function renderHomeExtremes(list) {
             const container = document.getElementById('home-extremes-container');
@@ -4858,7 +4893,10 @@
                 const row = `
                     <td class="p-3 font-bold whitespace-nowrap">${i + 1 + rankOffset}${arrowHtml}</td>
                     ${pouleBadge}
-                    <td class="p-3 flex items-center gap-2"><img src="${getLogo(t.team)}" class="w-5 h-5 object-contain"> <span class="truncate max-w-[120px] md:max-w-none">${t.team}</span></td>
+                    <td class="p-3 flex items-center gap-2"><img src="${getLogo(t.team)}" class="w-5 h-5 object-contain"> <span class="truncate max-w-[120px] md:max-w-none cursor-pointer hover:text-lynx-red" onclick="try { openTeamDetail('${xmlEsc(t.team)}'); } catch(e) {}">${t.team}</span></td>
+
+
+
                     <td class="p-3 text-center ${bgPts}">${t.pts}</td>
                     <td class="p-3 text-center text-gray-500">${t.mj}</td>
                 `; 
@@ -4999,12 +5037,16 @@
         // v2.22 : stats GARDIENS automatiques — depuis les rapports archivés (le flux référence le gardien
         // qui encaisse chaque but, et le rapport stocke les gardiens alignés). Zéro saisie, zéro invention :
         // un gardien n'apparaît que s'il est réellement référencé ou aligné dans un rapport.
-        async function liveGoalieStats() {
-            const reps = (await dbFetchCol('live-reports')).map(d => d.data)
-                .filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)))
-                .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-            const byName = new Map();
-            const ensure = (nm) => { const k = normalize(nm); if (!k) return null; if (!byName.has(k)) byName.set(k, { name: nm, mje: 0, v: 0, dprl: 0, d: 0, blan: 0, bc: 0, shots: 0 }); return byName.get(k); };
+
+
+async function liveGoalieStats() {
+    const reps = (await dbFetchCol('live-reports')).map(d => d.data)
+        .filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)))
+        .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    const byName = new Map();
+    const ensure = (nm) => { const k = normalize(nm); if (!k) return null; if (!byName.has(k)) byName.set(k, { name: nm, mje: 0, v: 0, dprl: 0, d: 0, blan: 0, bc: 0, shots: 0 }); return byName.get(k); };
+    // CORRECTION v2.22 : Initialiser tous les gardiens des effectifs pour la saison active
+    (roster || []).filter(p => p.isGoalie && p.season === activeSeason).forEach(g => ensure(g.name));
             reps.forEach(rep => {
                 const gh = Number(rep.scoreHome) || 0, gaT = Number(rep.scoreAway) || 0;
                 // gardien qui encaisse = gardien de l'équipe EN FACE du buteur (side = équipe qui marque)
@@ -5986,7 +6028,8 @@
             // ----------------------------------
 
             renderRanking(mainRanking, 'ranking-table-body-home', -5); // v2.20 : fenêtre de 5 équipes autour des Lynx (positions réelles)
-            renderHomeExtremes(mainRanking); 
+            renderHomeExtremes(mainRanking);
+            try { renderTitles(); } catch (e) {}
             renderForm(done);
             renderHomeRivals(mainRanking);
             renderHomeScenarios(mainRanking, sMatches); // v2.21 : scénarios des concurrents
@@ -9906,8 +9949,19 @@ ${cards}
                     if (perP[0] + perP[1] === 0 && (evtH < (st.homeScore || 0) || evtA < (st.awayScore || 0))) perP[(st.homeScore || 0) > (st.awayScore || 0) ? 0 : 1] = 1;
                 }
                 const showP = perP[0] + perP[1] > 0 || (!st.finished && (st.isOvertime || st.tab));
-                let cur = 0;
-                if (!st.finished && !st.paused) cur = (st.tab || st.isOvertime) ? 4 : Math.min(3, st.period || 1);
+let cur = 0;
+if (!st.finished && !st.paused) {
+    if (st.tab || st.isOvertime) cur = 4;
+    else {
+        const ms = st.ms || 0;
+        if (ms < 1200000) cur = 1;
+        else if (ms < 2400000) cur = 2;
+        else if (ms < 3600000) cur = 3;
+        else cur = 4;
+    }
+}
+
+
                 const chip = (lbl, txt, hi) => '<div class="flex-1 py-1.5 rounded-lg text-center ' + (hi ? 'bg-gray-100 dark:bg-gray-800 ring-2 ring-lynx-red' : 'bg-gray-100 dark:bg-gray-800') + '"><div class="text-[9px] font-bold text-gray-400 uppercase tracking-wide">' + lbl + '</div><div class="text-xs md:text-sm font-black tabular-nums">' + txt + '</div></div>';
                 let chips = chip('T1', perT[0][0] + '-' + perT[0][1], cur === 1) + chip('T2', perT[1][0] + '-' + perT[1][1], cur === 2) + chip('T3', perT[2][0] + '-' + perT[2][1], cur === 3);
                 if (showP) chips += chip('Prol.', perP[0] + '-' + perP[1], cur === 4);
@@ -10664,7 +10718,15 @@ ${cards}
                     // v2.22 : le chrono affiché est recalibré sur CHAQUE relevé (le flux peut reculer) puis
                     // avance en local d'une seconde à l'autre, calé sur les limites de tiers — plus de chrono figé.
                     liveClock = { ms: st.ms, at: Date.now(), run: !st.paused && !st.finished && !st.tab, ot: st.isOvertime };
-                    if (chronoEl) chronoEl.textContent = st.tab ? '—' : st.chronoTxt;
+// CORRECTION v2.22 : Synchronisation avec l'heure réelle toutes les 30s
+if (!window.liveLastSync || Date.now() - window.liveLastSync > 30000) {
+    window.liveLastSync = Date.now();
+    if (st.ms >= 0 && st.ms <= 4200000) {
+        liveClock.ms = st.ms;
+        liveClock.at = Date.now();
+    }
+}
+if (chronoEl) chronoEl.textContent = st.tab ? '—' : st.chronoTxt;
                     const btnSaveLive = document.getElementById('live-save-result');
                     if (btnSaveLive) btnSaveLive.style.display = st.finished ? '' : 'none';
                     const mySide = liveIsMyTeam(st.homeName) ? 'home' : (liveIsMyTeam(st.awayName) ? 'away' : '');
