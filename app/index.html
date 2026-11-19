@@ -486,9 +486,18 @@
                         <div id="home-series"></div>
                     </div>
 
-                    <!-- EXTREMES WIDGET -->
-                    <div id="home-extremes-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-purple-500">
-                        <h3 id="home-extremes-title" class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">Les Extrêmes (Poule B)</h3>
+<!-- TITRES DE LA SAISON -->
+<div id="home-titles-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-yellow-500">
+    <h3 class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">🏆 Titres de la saison</h3>
+    <div id="home-titles"></div>
+</div>
+
+<!-- EXTREMES WIDGET -->
+<div id="home-extremes-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-purple-500">
+    <h3 id="home-extremes-title" class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">Les Extrêmes (Poule B)</h3>
+
+
+
                         <div class="grid grid-cols-2 gap-3 text-center">
                             <div class="p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-100 dark:border-green-900/30">
                                 <div class="text-[10px] uppercase font-bold text-green-600 mb-1"><i class="fa-solid fa-fire mr-1"></i>Top Attaque</div>
@@ -3210,9 +3219,9 @@
                 return; 
             }
             updateTitlesHistory(T);
-            // v2.23 : Generer les titres dans le conteneur dedie (visible meme les jours de match)
+            // v2.23 : Générer les titres dans le conteneur dédié (visible même les jours de match)
             if (titlesCont) {
-                titlesCont.innerHTML = `<h3 class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">Titres de la saison</h3><div class="grid grid-cols-2 md:grid-cols-4 gap-2">${T.map(t => `<button class="title-chip text-left p-2 rounded-lg bg-white/80 dark:bg-gray-800/80 shadow border-l-4 border-purple-500 hover:shadow-md transition" data-team="${xmlEsc(t.team)}"><div class="text-[10px] font-black uppercase text-gray-400 truncate">${t.icon} ${xmlEsc(t.label)}</div><div class="text-xs font-black truncate">${xmlEsc(t.team)}</div><div class="text-[10px] text-gray-400 truncate">${xmlEsc(t.val)}</div></button>`).join("")}</div>`;
+                titlesCont.innerHTML = `<h3 class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">Titres de la saison</h3><div class="grid grid-cols-2 md:grid-cols-4 gap-2">${T.map(t => `<button class="title-chip text-left p-2 rounded-lg bg-white/80 dark:bg-gray-800/80 shadow border-l-4 border-purple-500 hover:shadow-md transition" data-team="${xmlEsc(t.team)}"><div class="text-[10px] font-black uppercase text-gray-400 truncate">${t.icon} ${xmlEsc(t.label)}</div><div class="text-xs font-black truncate">${xmlEsc(t.team)}</div><div class="text-[10px] text-gray-400 truncate">${xmlEsc(t.val)}</div></button>`).join("\n")}</div>`;
             }
             }
         let _atSort = { k: "pts", dir: -1 };
@@ -3362,18 +3371,8 @@
                 }
                 if (mm) {
                     try {
-                        await setDoc(doc(db, basePath + '/live-reports/' + rp._id), { 
-                            homeTeam: mm.homeTeam, 
-                            awayTeam: mm.awayTeam, 
-                            scoreHome: Number(mm.scoreHome) || 0, 
-                            scoreAway: Number(mm.scoreAway) || 0, 
-                            date: mm.date || rp.date || '', 
-                            season: mm.season || activeSeason, 
-                            ffhgId: mm.ffhgId || rp.ffhgId || '',
-                            isProl: mm.isProl || false
-                        }, { merge: true });
+                        await setDoc(doc(db, basePath + '/live-reports/' + rp._id), { homeTeam: mm.homeTeam, awayTeam: mm.awayTeam, scoreHome: Number(mm.scoreHome) || 0, scoreAway: Number(mm.scoreAway) || 0, date: mm.date || rp.date || '', season: mm.season || activeSeason, ffhgId: mm.ffhgId || rp.ffhgId || '' }, { merge: true });
                         rp.homeTeam = mm.homeTeam; rp.awayTeam = mm.awayTeam; rp.scoreHome = Number(mm.scoreHome) || 0; rp.scoreAway = Number(mm.scoreAway) || 0;
-                        rp.date = mm.date || rp.date || ''; rp.season = mm.season || activeSeason; rp.ffhgId = mm.ffhgId || rp.ffhgId || '';
                         try { loadLiveReportIds(); } catch (e) {}
                     } catch (e) {}
                 }
@@ -4287,23 +4286,33 @@
                 // v2.21 : timeline du match — frise des buts et pénalités depuis le rapport live
                 let tl = '';
                 try {
-                    const evs = [...(rep.events || [])].filter(e => e && e.ty && e.time);
-                    if (evs.length) {
-                        const minOf = (e) => { const mm = String(e.time).match(/(\d+)/); return mm ? Number(mm[1]) : 0; };
-                        const maxMin = Math.max(60, ...evs.map(minOf)) + 1;
-                        const px = (min) => (Math.max(0, Math.min(1, min / maxMin)) * 100).toFixed(2);
-                        let inner = '';
-                        [[20, 'Fin T1'], [40, 'Fin T2'], [60, 'Fin T3']].forEach(t => { if (t[0] < maxMin) inner += `<div class="absolute top-0 bottom-0 w-px bg-gray-300 dark:bg-gray-600" style="left:${px(t[0])}%" title="${t[1]}"></div>`; });
-                        evs.forEach(e => {
-                            const min = minOf(e);
-                            const who = String(e.who || '').split('(')[0].trim();
-                            if (e.ty === 'BUT') {
-                                const mine = e.side === lynxSide;
-                                inner += `<div class="absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}" style="left:${px(min)}%" title="${mine ? 'But Lynx' : 'But adverse'} — ${xmlEsc(who)} (${xmlEsc(String(e.time))})"><div class="w-3 h-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${mine ? 'bg-lynx-red' : 'bg-sky-700'}"></div></div>`;
-                            } else if (/PEN|PUN/i.test(String(e.ty))) {
-                                inner += `<div class="absolute -translate-x-1/2 top-1/2 -mt-1" style="left:${px(min)}%" title="Pénalité ${xmlEsc(who)} (${xmlEsc(String(e.time))})"><div class="w-2 h-2 rotate-45 bg-amber-500"></div></div>`;
-                            }
-                        });
+
+
+const evs = [...(rep.events || [])].filter(e => e && e.ty);
+if (evs.length) {
+    const minOf = (e) => { const t = String(e.time || e.temps || '').match(/(\\d+)/); return t ? Number(t[1]) : 0; };
+    const maxMin = Math.max(60, ...evs.map(minOf).filter(m => m > 0)) + 1;
+    const px = (min) => (Math.max(0, Math.min(1, min / maxMin)) * 100).toFixed(2);
+    let inner = '';
+    [[20, 'Fin T1'], [40, 'Fin T2'], [60, 'Fin T3']].forEach(t => { if (t[0] < maxMin) inner += `<div class=\"absolute top-0 bottom-0 w-px bg-gray-300 dark:bg-gray-600\" style=\"left:${px(t[0])}%\" title=\"${t[1]}\"></div>`; });
+    evs.forEach(e => {
+        const min = minOf(e);
+        const who = String(e.who || '').split('(')[0].trim();
+        const timeStr = xmlEsc(String(e.time || e.temps || ''));
+        if (e.ty === 'BUT') {
+            const mine = e.side === lynxSide;
+            inner += `<div class=\"absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}\" style=\"left:${px(min)}%\" title=\"${mine ? 'But Lynx' : 'But adverse'} – ${xmlEsc(who)} (${timeStr})\"><div class=\"w-3 h-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${mine ? 'bg-lynx-red' : 'bg-sky-700'}\"></div></div>`;
+        } else if (/TIR|SHOT/i.test(String(e.ty))) {
+            const mine = e.side === lynxSide;
+            inner += `<div class=\"absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}\" style=\"left:${px(min)}%;opacity:0.4\" title=\"${mine ? 'Tir Lynx' : 'Tir adverse'} – ${xmlEsc(who)} (${timeStr})\"><div class=\"w-2 h-2 rounded-full ${mine ? 'bg-lynx-red/60' : 'bg-sky-700/60'}\"></div></div>`;
+        } else if (/PEN|PUN/i.test(String(e.ty))) {
+            inner += `<div class=\"absolute -translate-x-1/2 top-1/2 -mt-1\" style=\"left:${px(min)}%\" title=\"Pénalité ${xmlEsc(who)} (${timeStr})\"><div class=\"w-2 h-2 rotate-45 bg-amber-500\"></div></div>`;
+        }
+    });
+
+
+
+
                         tl = `<div class="mt-3 relative h-12 w-full max-w-md mx-auto"><div class="absolute top-1/2 left-0 right-0 h-0.5 bg-gray-200 dark:bg-gray-700 -translate-y-1/2"></div>${inner}</div><div class="flex justify-between items-center text-[9px] text-gray-400 font-bold max-w-md mx-auto gap-2"><span>0'</span><span>🚨 Lynx (haut) · adversaire (bas) · ◆ pénalités</span><span>${maxMin - 1}'</span></div>`;
                     }
                 } catch (e) {}
@@ -4789,6 +4798,33 @@
             return ''; 
         }
 
+                // --- NEW: RENDER TITLES WIDGET ---
+        function renderTitles() {
+            const container = document.getElementById('home-titles-container');
+            if (!container) return;
+            container.classList.remove('hidden');
+            const el = document.getElementById('home-titles');
+            if (!el) return;
+            try {
+                const season = activeSeason;
+                const titles = [];
+                const ranking = [...(mainRanking || [])].filter(t => t.season === season);
+                const lynx = ranking.find(t => normalize(t.team).includes('valence'));
+                if (lynx && ranking.length) {
+                    const sorted = [...ranking].sort((a, b) => (b.pts || 0) - (a.pts || 0));
+                    const lynxIdx = sorted.findIndex(t => normalize(t.team).includes('valence'));
+                    if (lynxIdx >= 0) {
+                        if (lynxIdx === 0) titles.push('🥇 Champion de la poule');
+                        else if (lynxIdx === 1) titles.push('🥈 Vice-champion de la poule');
+                        else if (lynxIdx === 2) titles.push('🥉 3ème de la poule');
+                    }
+                    if (lynx.bp > 0 && sorted.every(t => (t.bp || 0) <= lynx.bp)) titles.push('🎯 Meilleure attaque');
+                    if (lynx.bc >= 0 && sorted.every(t => (t.bc || 999) >= lynx.bc)) titles.push('🛡️ Meilleure défense');
+                }
+                el.innerHTML = titles.length ? titles.map(t => `<div class="text-center p-2">${t}</div>`).join('') : '<div class="text-center p-2 text-gray-400">Aucun titre encore</div>';
+            } catch (e) { el.innerHTML = '<div class="text-center p-2 text-gray-400">Chargement...</div>'; }
+        }
+
         // --- NEW: RENDER HOME EXTREMES WIDGET ---
         function renderHomeExtremes(list) {
             const container = document.getElementById('home-extremes-container');
@@ -4896,7 +4932,10 @@
                 const row = `
                     <td class="p-3 font-bold whitespace-nowrap">${i + 1 + rankOffset}${arrowHtml}</td>
                     ${pouleBadge}
-                    <td class="p-3 flex items-center gap-2"><img src="${getLogo(t.team)}" class="w-5 h-5 object-contain"> <span class="truncate max-w-[120px] md:max-w-none">${t.team}</span></td>
+                    <td class="p-3 flex items-center gap-2"><img src="${getLogo(t.team)}" class="w-5 h-5 object-contain"> <span class="truncate max-w-[120px] md:max-w-none cursor-pointer hover:text-lynx-red" onclick="try { openTeamDetail('${xmlEsc(t.team)}'); } catch(e) {}">${t.team}</span></td>
+
+
+
                     <td class="p-3 text-center ${bgPts}">${t.pts}</td>
                     <td class="p-3 text-center text-gray-500">${t.mj}</td>
                 `; 
@@ -5037,12 +5076,16 @@
         // v2.22 : stats GARDIENS automatiques — depuis les rapports archivés (le flux référence le gardien
         // qui encaisse chaque but, et le rapport stocke les gardiens alignés). Zéro saisie, zéro invention :
         // un gardien n'apparaît que s'il est réellement référencé ou aligné dans un rapport.
-        async function liveGoalieStats() {
-            const reps = (await dbFetchCol('live-reports')).map(d => d.data)
-                .filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)))
-                .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-            const byName = new Map();
-            const ensure = (nm) => { const k = normalize(nm); if (!k) return null; if (!byName.has(k)) byName.set(k, { name: nm, mje: 0, v: 0, dprl: 0, d: 0, blan: 0, bc: 0, shots: 0 }); return byName.get(k); };
+
+
+async function liveGoalieStats() {
+    const reps = (await dbFetchCol('live-reports')).map(d => d.data)
+        .filter(r => r && Array.isArray(r.events) && (!r.season || String(r.season) === String(activeSeason)))
+        .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    const byName = new Map();
+    const ensure = (nm) => { const k = normalize(nm); if (!k) return null; if (!byName.has(k)) byName.set(k, { name: nm, mje: 0, v: 0, dprl: 0, d: 0, blan: 0, bc: 0, shots: 0 }); return byName.get(k); };
+    // CORRECTION v2.22 : Initialiser tous les gardiens des effectifs pour la saison active
+    (roster || []).filter(p => p.isGoalie && p.season === activeSeason).forEach(g => ensure(g.name));
             reps.forEach(rep => {
                 const gh = Number(rep.scoreHome) || 0, gaT = Number(rep.scoreAway) || 0;
                 // gardien qui encaisse = gardien de l'équipe EN FACE du buteur (side = équipe qui marque)
@@ -6024,14 +6067,16 @@
             // ----------------------------------
 
             renderRanking(mainRanking, 'ranking-table-body-home', -5); // v2.20 : fenêtre de 5 équipes autour des Lynx (positions réelles)
-            renderHomeExtremes(mainRanking); 
+            renderHomeExtremes(mainRanking);
+            try { renderTitles(); } catch (e) {}
             renderForm(done);
             renderHomeRivals(mainRanking);
             renderHomeScenarios(mainRanking, sMatches); // v2.21 : scénarios des concurrents
             try { renderLiveSeasonStats(); } catch (e) {} // v2.22 : stats live de saison + points mérités + fiche adverse
             try { renderHomeQuiz(); } catch (e) {} // v2.22-b : quiz du jour
             try { renderHomeDna(); } catch (e) {} // v2.22-b : ADN offensif
-            try { renderExtremesLive(); } catch (e) {} // v2.22-b : titres de la saison
+            try { renderExtremesLive(); } catch (e) {}
+try { document.getElementById('home-titles').innerHTML = document.getElementById('league-extremes-body') ? document.getElementById('league-extremes-body').innerHTML : '<div class="text-center p-2">Chargement...</div>'; } catch(e) {} // v2.22-b : titres de la saison
             try { renderAllTeams(); } catch (e) {} // v2.22-b : tableau toutes les équipes
             window.__homeCtx = { ranking: mainRanking, sm: sMatches }; setTimeout(() => { try { renderLiveStandings(mainRanking, sMatches); } catch (e) {} }, 900); // v2.21 : classement vivant
             renderSeriesRecords(sMatches, mainRanking);
@@ -6646,7 +6691,7 @@
             } catch (e) { console.warn('renderGoalsTiming', e); }
         }
 
-        // Pronostic        // Pronostic à afficher sur une ligne de calendrier : à venir = modèle actuel ; joué = pronostic rejoué avant-match
+        // Pronostic à afficher sur une ligne de calendrier : à venir = modèle actuel ; joué = pronostic rejoué avant-match
         // v2.22 : filet de sécurité — prédiction d'un match JOUÉ recalculée à la volée (uniquement avec les matchs
         // d'AVANT, sans tricher) quand elle manque au backtest : le badge 🔮 reste affiché quoi qu'il arrive
         // (cache figé par une journée avec un match reporté, match recréé/restauré, import…).
@@ -9965,8 +10010,19 @@ ${cards}
                     if (perP[0] + perP[1] === 0 && (evtH < (st.homeScore || 0) || evtA < (st.awayScore || 0))) perP[(st.homeScore || 0) > (st.awayScore || 0) ? 0 : 1] = 1;
                 }
                 const showP = perP[0] + perP[1] > 0 || (!st.finished && (st.isOvertime || st.tab));
-                let cur = 0;
-                if (!st.finished && !st.paused) cur = (st.tab || st.isOvertime) ? 4 : Math.min(3, st.period || 1);
+let cur = 0;
+if (!st.finished && !st.paused) {
+    if (st.tab || st.isOvertime) cur = 4;
+    else {
+        const ms = st.ms || 0;
+        if (ms < 1200000) cur = 1;
+        else if (ms < 2400000) cur = 2;
+        else if (ms < 3600000) cur = 3;
+        else cur = 4;
+    }
+}
+
+
                 const chip = (lbl, txt, hi) => '<div class="flex-1 py-1.5 rounded-lg text-center ' + (hi ? 'bg-gray-100 dark:bg-gray-800 ring-2 ring-lynx-red' : 'bg-gray-100 dark:bg-gray-800') + '"><div class="text-[9px] font-bold text-gray-400 uppercase tracking-wide">' + lbl + '</div><div class="text-xs md:text-sm font-black tabular-nums">' + txt + '</div></div>';
                 let chips = chip('T1', perT[0][0] + '-' + perT[0][1], cur === 1) + chip('T2', perT[1][0] + '-' + perT[1][1], cur === 2) + chip('T3', perT[2][0] + '-' + perT[2][1], cur === 3);
                 if (showP) chips += chip('Prol.', perP[0] + '-' + perP[1], cur === 4);
@@ -10723,7 +10779,15 @@ ${cards}
                     // v2.22 : le chrono affiché est recalibré sur CHAQUE relevé (le flux peut reculer) puis
                     // avance en local d'une seconde à l'autre, calé sur les limites de tiers — plus de chrono figé.
                     liveClock = { ms: st.ms, at: Date.now(), run: !st.paused && !st.finished && !st.tab, ot: st.isOvertime };
-                    if (chronoEl) chronoEl.textContent = st.tab ? '—' : liveMmss(st.ms / 1000);
+// CORRECTION v2.22 : Synchronisation avec l'heure réelle toutes les 30s
+if (!window.liveLastSync || Date.now() - window.liveLastSync > 30000) {
+    window.liveLastSync = Date.now();
+    if (st.ms >= 0 && st.ms <= 4200000) {
+        liveClock.ms = st.ms;
+        liveClock.at = Date.now();
+    }
+}
+if (chronoEl) chronoEl.textContent = st.tab ? '—' : liveMmss(st.ms / 1000);
                     const btnSaveLive = document.getElementById('live-save-result');
                     if (btnSaveLive) btnSaveLive.style.display = st.finished ? '' : 'none';
                     const mySide = liveIsMyTeam(st.homeName) ? 'home' : (liveIsMyTeam(st.awayName) ? 'away' : '');
@@ -11069,7 +11133,6 @@ ${cards}
                     else appAlert('🔄 Récupération FFHG terminée.\n\n✅ ' + out.filled + ' résultat(s) ajouté(s) au calendrier\n🆕 ' + out.created + ' match(s) manquant(s) recréé(s)\n🎬 ' + out.reports + ' déroulé(s) archivé(s) (la base se complète par tranches à chaque clic — toute la saison est balayée)' + (out.diverge.length ? '\n\n⚠️ Divergences (score saisi ≠ FFHG — RIEN modifié, à vérifier) :\n' + out.diverge.join('\n') : ''));
                 }
                 return out;
-            }
             }
             async function ffhgArchiveReports(maxN) {
                 let n = 0;
