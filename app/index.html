@@ -6044,16 +6044,49 @@ async function liveGoalieStats() {
             container.innerHTML = svg;
         }
 
-        function updateUI() {
-            updateSeasonSelector();
-            const fmt = getFormat(activeSeason);
-            const hasPoules = seasonHasPoules(activeSeason);
-            const sMatches = allMatches.filter(m => m.season === activeSeason);
-            const lynxMatches = sMatches.filter(m => normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence')).sort((a,b)=>new Date(a.date)-new Date(b.date));
-            const done = lynxMatches.filter(m => isMatchFinished(m));
-            const next = lynxMatches.filter(m => !isMatchFinished(m) && new Date(m.date) >= new Date(new Date().setHours(0,0,0,0)));
-            const lastFinishedAny = sMatches.filter(m => isMatchFinished(m) && (normalize(m.homeTeam).includes('valence') || normalize(m.awayTeam).includes('valence'))).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
 
+        
+        const today = new Date();
+today.setHours(0,0,0,0);
+
+const sMatches = allMatches.filter(m => m.season === activeSeason);
+
+const lynxMatches = [];
+const done = [];
+const next = [];
+
+let lastFinishedAny = null;
+
+for (const m of sMatches) {
+
+    const isLynx =
+        normalize(m.homeTeam).includes('valence') ||
+        normalize(m.awayTeam).includes('valence');
+
+    if (!isLynx) continue;
+
+    lynxMatches.push(m);
+
+    const finished = isMatchFinished(m);
+
+    if (finished) {
+        done.push(m);
+
+        if (
+            !lastFinishedAny ||
+            new Date(m.date) > new Date(lastFinishedAny.date)
+        ) {
+            lastFinishedAny = m;
+        }
+
+    } else if (new Date(m.date) >= today) {
+        next.push(m);
+    }
+}
+
+lynxMatches.sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+            
             let computedRankingA, computedRankingB;
             if (hasPoules) {
                 // D2 : classements distincts par poule
@@ -6128,14 +6161,31 @@ async function liveGoalieStats() {
             try { renderHomeDna(); } catch (e) {} // v2.22-b : ADN offensif
             try { renderExtremesLive(); } catch (e) {}
 try { document.getElementById('home-titles').innerHTML = document.getElementById('league-extremes-body') ? document.getElementById('league-extremes-body').innerHTML : '<div class="text-center p-2">Chargement...</div>'; } catch(e) {} // v2.22-b : titres de la saison
-            try { renderAllTeams(); } catch (e) {} // v2.22-b : tableau toutes les équipes
+            if (document.getElementById('all-teams-body')) {
+    try { renderAllTeams(); } catch (e) {}
+} // v2.22-b : tableau toutes les équipes
             window.__homeCtx = { ranking: mainRanking, sm: sMatches }; setTimeout(() => { try { renderLiveStandings(mainRanking, sMatches); } catch (e) {} }, 900); // v2.21 : classement vivant
             renderSeriesRecords(sMatches, mainRanking);
             setTimeout(() => { try { updateHomeForecast(); } catch (e) {} }, 400); // v2.21 : proba playoffs + courbe de fiabilité (après peinture, moteur en cache)
             renderMatchDay(next, sMatches, mainRanking);
-            renderLynxCal(lynxMatches);
-            renderFullCal(sMatches); 
-            renderRankingGlobal(computedRankingA, computedRankingB);
+            const lynxCalEl = document.getElementById('lynx-calendar-body');
+
+if (lynxCalEl && !lynxCalEl.dataset.loaded) {
+    renderLynxCal(lynxMatches);
+    lynxCalEl.dataset.loaded = '1';
+}
+            const fullCalEl = document.getElementById('full-calendar-body');
+
+if (fullCalEl && !fullCalEl.dataset.loaded) {
+    renderFullCal(sMatches);
+    fullCalEl.dataset.loaded = '1';
+}
+            const globalRankingEl = document.getElementById('ranking-global-body');
+
+if (globalRankingEl && !globalRankingEl.dataset.loaded) {
+    renderRankingGlobal(computedRankingA, computedRankingB);
+    globalRankingEl.dataset.loaded = '1';
+}
             
             // NEW CALLS
             renderMorale(sMatches);
@@ -8373,7 +8423,21 @@ ${cards}
 
         // ==================== DEBOUNCE UI ====================
         let uiTimer = null;
-        function scheduleUI() { if (uiTimer) clearTimeout(uiTimer); uiTimer = setTimeout(() => { uiTimer = null; try { updateUI(); } catch (e) { console.error(e); } }, 120); }
+function scheduleUI() {
+    if (uiTimer) return;
+
+    uiTimer = setTimeout(() => {
+
+        uiTimer = null;
+
+        try {
+            updateUI();
+        } catch (e) {
+            console.error(e);
+        }
+
+    }, 250);
+}
         const handleGoaliesImport = async (data) => { 
             let count = 0; 
             for(const row of data) { 
