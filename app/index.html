@@ -484,7 +484,7 @@
                         <div id="home-series"></div>
                     </div>
 
-<!-- TITRES DE LA SAISON (visible H24) -->
+<!-- TITRES DE LA SAISON -->
 <div id="home-titles-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-yellow-500">
     <h3 class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">🏆 Titres de la saison</h3>
     <div id="home-titles"></div>
@@ -493,6 +493,9 @@
 <!-- EXTREMES WIDGET -->
 <div id="home-extremes-container" class="bg-white/70 dark:bg-dark-card/70 backdrop-blur-lg p-4 rounded-xl shadow-xl border-t-4 border-purple-500">
     <h3 id="home-extremes-title" class="text-sm font-bold uppercase text-gray-500 mb-4 tracking-widest text-center">Les Extrêmes (Poule B)</h3>
+
+
+
                         <div class="grid grid-cols-2 gap-3 text-center">
                             <div class="p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-100 dark:border-green-900/30">
                                 <div class="text-[10px] uppercase font-bold text-green-600 mb-1"><i class="fa-solid fa-fire mr-1"></i>Top Attaque</div>
@@ -1686,11 +1689,11 @@
     </div>
 
     <script type="module">
-        const apiKey = "AQ.Ab8RN6JmT9XueElXAFk0Q0lIMp2RnCN04wVKbxQsapGyBV9yuw";
+        const apiKey = "";
         // Clé Mistral de SECOURS (optionnelle) : si Gemini est à court de quota,
         // l'IA bascule automatiquement ici. Clé gratuite sur console.mistral.ai
         // (compte gratuit, sans carte bancaire). Laisser vide pour ignorer.
-        const mistralApiKey = "mstrl_6FBnN20cCLITDZS79b5ntGc3bkgAvMU0_37OSA3";
+        const mistralApiKey = "";
         // Publication du flux RSS en ligne depuis l'app (code 100 % local) :
         // 1) crée un mini-dépôt GitHub public "lynx-feed" (juste un README) et active Pages dessus
         // 2) génère un token GitHub "fine-grained" (Settings → Developer settings → Fine-grained tokens) :
@@ -4257,23 +4260,33 @@
                 // v2.21 : timeline du match — frise des buts et pénalités depuis le rapport live
                 let tl = '';
                 try {
-                    const evs = [...(rep.events || [])].filter(e => e && e.ty && e.time);
-                    if (evs.length) {
-                        const minOf = (e) => { const mm = String(e.time).match(/(\d+)/); return mm ? Number(mm[1]) : 0; };
-                        const maxMin = Math.max(60, ...evs.map(minOf)) + 1;
-                        const px = (min) => (Math.max(0, Math.min(1, min / maxMin)) * 100).toFixed(2);
-                        let inner = '';
-                        [[20, 'Fin T1'], [40, 'Fin T2'], [60, 'Fin T3']].forEach(t => { if (t[0] < maxMin) inner += `<div class="absolute top-0 bottom-0 w-px bg-gray-300 dark:bg-gray-600" style="left:${px(t[0])}%" title="${t[1]}"></div>`; });
-                        evs.forEach(e => {
-                            const min = minOf(e);
-                            const who = String(e.who || '').split('(')[0].trim();
-                            if (e.ty === 'BUT') {
-                                const mine = e.side === lynxSide;
-                                inner += `<div class="absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}" style="left:${px(min)}%" title="${mine ? 'But Lynx' : 'But adverse'} — ${xmlEsc(who)} (${xmlEsc(String(e.time))})"><div class="w-3 h-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${mine ? 'bg-lynx-red' : 'bg-sky-700'}"></div></div>`;
-                            } else if (/PEN|PUN/i.test(String(e.ty))) {
-                                inner += `<div class="absolute -translate-x-1/2 top-1/2 -mt-1" style="left:${px(min)}%" title="Pénalité ${xmlEsc(who)} (${xmlEsc(String(e.time))})"><div class="w-2 h-2 rotate-45 bg-amber-500"></div></div>`;
-                            }
-                        });
+
+
+const evs = [...(rep.events || [])].filter(e => e && e.ty);
+if (evs.length) {
+    const minOf = (e) => { const t = String(e.time || e.temps || '').match(/(\\d+)/); return t ? Number(t[1]) : 0; };
+    const maxMin = Math.max(60, ...evs.map(minOf).filter(m => m > 0)) + 1;
+    const px = (min) => (Math.max(0, Math.min(1, min / maxMin)) * 100).toFixed(2);
+    let inner = '';
+    [[20, 'Fin T1'], [40, 'Fin T2'], [60, 'Fin T3']].forEach(t => { if (t[0] < maxMin) inner += `<div class=\"absolute top-0 bottom-0 w-px bg-gray-300 dark:bg-gray-600\" style=\"left:${px(t[0])}%\" title=\"${t[1]}\"></div>`; });
+    evs.forEach(e => {
+        const min = minOf(e);
+        const who = String(e.who || '').split('(')[0].trim();
+        const timeStr = xmlEsc(String(e.time || e.temps || ''));
+        if (e.ty === 'BUT') {
+            const mine = e.side === lynxSide;
+            inner += `<div class=\"absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}\" style=\"left:${px(min)}%\" title=\"${mine ? 'But Lynx' : 'But adverse'} – ${xmlEsc(who)} (${timeStr})\"><div class=\"w-3 h-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${mine ? 'bg-lynx-red' : 'bg-sky-700'}\"></div></div>`;
+        } else if (/TIR|SHOT/i.test(String(e.ty))) {
+            const mine = e.side === lynxSide;
+            inner += `<div class=\"absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}\" style=\"left:${px(min)}%;opacity:0.4\" title=\"${mine ? 'Tir Lynx' : 'Tir adverse'} – ${xmlEsc(who)} (${timeStr})\"><div class=\"w-2 h-2 rounded-full ${mine ? 'bg-lynx-red/60' : 'bg-sky-700/60'}\"></div></div>`;
+        } else if (/PEN|PUN/i.test(String(e.ty))) {
+            inner += `<div class=\"absolute -translate-x-1/2 top-1/2 -mt-1\" style=\"left:${px(min)}%\" title=\"Pénalité ${xmlEsc(who)} (${timeStr})\"><div class=\"w-2 h-2 rotate-45 bg-amber-500\"></div></div>`;
+        }
+    });
+
+
+
+
                         tl = `<div class="mt-3 relative h-12 w-full max-w-md mx-auto"><div class="absolute top-1/2 left-0 right-0 h-0.5 bg-gray-200 dark:bg-gray-700 -translate-y-1/2"></div>${inner}</div><div class="flex justify-between items-center text-[9px] text-gray-400 font-bold max-w-md mx-auto gap-2"><span>0'</span><span>🚨 Lynx (haut) · adversaire (bas) · ◆ pénalités</span><span>${maxMin - 1}'</span></div>`;
                     }
                 } catch (e) {}
@@ -6036,7 +6049,8 @@ async function liveGoalieStats() {
             try { renderLiveSeasonStats(); } catch (e) {} // v2.22 : stats live de saison + points mérités + fiche adverse
             try { renderHomeQuiz(); } catch (e) {} // v2.22-b : quiz du jour
             try { renderHomeDna(); } catch (e) {} // v2.22-b : ADN offensif
-            try { renderExtremesLive(); } catch (e) {} // v2.22-b : titres de la saison
+            try { renderExtremesLive(); } catch (e) {}
+try { document.getElementById('home-titles').innerHTML = document.getElementById('league-extremes-body') ? document.getElementById('league-extremes-body').innerHTML : '<div class="text-center p-2">Chargement...</div>'; } catch(e) {} // v2.22-b : titres de la saison
             try { renderAllTeams(); } catch (e) {} // v2.22-b : tableau toutes les équipes
             window.__homeCtx = { ranking: mainRanking, sm: sMatches }; setTimeout(() => { try { renderLiveStandings(mainRanking, sMatches); } catch (e) {} }, 900); // v2.21 : classement vivant
             renderSeriesRecords(sMatches, mainRanking);
