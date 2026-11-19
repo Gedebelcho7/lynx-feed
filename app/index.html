@@ -6711,10 +6711,19 @@ try { document.getElementById('home-titles').innerHTML = document.getElementById
                 });
                 const totF = buckets.reduce((s, b) => s + b.f, 0), totC = buckets.reduce((s, b) => s + b.c, 0), totS = buckets.reduce((s, b) => s + (b.s || 0), 0);
                 if (!totF && !totC) { el.innerHTML = '<div class="text-xs text-gray-400 italic text-center py-4">Aucun but enregistré dans les matchs suivis en direct — la heatmap se remplira au fil des matchs.</div>'; return; }
-                const maxV = Math.max(1, ...buckets.map(b => Math.max(b.f, b.c)));
-                const maxS = Math.max(1, ...buckets.map(b => b.s || 0));
-                const shotH = totS > 0 ? (H - padB - 6) * 0.15 : 0;
-                const W = 560, H = 170, padL = 26, padB = 28, bw = (W - padL - 12) / 7;
+                
+const maxV = Math.max(1, ...buckets.map(b => Math.max(b.f, b.c)));
+const maxS = Math.max(1, ...buckets.map(b => b.s || 0));
+
+const W = 560;
+const H = 170;
+const padL = 26;
+const padB = 28;
+const bw = (W - padL - 12) / 7;
+
+const shotH = totS > 0 ? (H - padB - 6) * 0.15 : 0;
+                
+                
                 let g = '';
                 buckets.forEach((b, i) => {
                     const x = padL + i * bw;
