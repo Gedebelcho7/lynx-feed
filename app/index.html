@@ -6740,7 +6740,7 @@ const shotH = totS > 0 ? (H - padB - 6) * 0.15 : 0;
                         }
                     }
                     const hf = (H - padB - 6) * b.f / maxV, hc = (H - padB - 6) * b.c / maxV;
-                    const x = padL + i * bw;
+                   
                     g += `<rect x="${(x + 2).toFixed(1)}" y="${(H - padB - hf).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${Math.max(0, hf).toFixed(1)}" fill="#D90429" rx="2"><title>Buts Lynx ${i === 6 ? '60 min et +' : i * 10 + '-' + (i * 10 + 10) + ' min'} : ${b.f}</title></rect>`;
                     g += `<rect x="${(x + bw / 2 + 1).toFixed(1)}" y="${(H - padB - hc).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${Math.max(0, hc).toFixed(1)}" fill="#64748B" rx="2"><title>Buts encaissés : ${b.c}</title></rect>`;
                     g += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - padB + 12}" font-size="9" text-anchor="middle" fill="#9CA3AF">${i === 6 ? '60+' : i * 10}</text>`;
