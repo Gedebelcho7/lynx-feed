@@ -9768,6 +9768,10 @@ ${cards}
             const LIVE_STORE = 'lynx_live_settings';
             let liveTimer = null, liveWs = null, liveWsPinged = 0, liveProxyIdx = 0;
             let liveClock = null, liveClockTimer = null; // v2.22 : chrono qui avance entre les relevés
+            let liveMatchStartTime = null, liveMatchStartMs = 0; // v2.25 : heure de début du match pour synchronisation globale
+            let liveLastEngagementTime = null, liveLastEngagementMs = 0; // v2.25 : dernier engagement/reprise
+            let liveClockSource = 'init'; // v2.25 : 'ffhg' | 'local' | 'sync' | 'engagement' | 'reset'
+            let liveClockHistory = []; // v2.25 : historique des relevés pour détection anomalies
             let liveFirstPoll = true, livePrev = null, liveFilter = 'all', liveErrCount = 0, liveTitleTimer = null, livePunchBusy = false, liveDetectTried = false;
             let liveSeen = { goals: new Set(), events: new Set(), started: false, wasPaused: null, finished: false, maxTemps: 0, perEnded: new Set() };
             let liveFfhgDone = false, liveFfhgCheckedAt = 0, liveFfhgVp = ''; // v2.22 : la liste officielle FFHG (etat = T) fait foi sur la fin d'un match jamais clôturé dans le flux ; vp = victoire_par (PRL/TAB) pour les vraies prolongations
@@ -10850,40 +10854,125 @@ if (!st.finished && !st.paused) {
                     const aLogo = document.getElementById('live-away-logo');
                     if (aLogo) { aLogo.src = getLogo(st.awayName); aLogo.alt = st.awayName; aLogo.style.display = ''; aLogo.onerror = () => { aLogo.style.display = 'none'; }; }
                     const chronoEl = document.getElementById('live-chrono');
-                    // v2.22 : le chrono affiché est recalibré sur CHAQUE relevé (le flux peut reculer) puis
-                    // avance en local d'une seconde à l'autre, calé sur les limites de tiers — plus de chrono figé.
-                    liveClock = { ms: st.ms, at: Date.now(), run: !st.paused && !st.finished && !st.tab, ot: st.isOvertime };
-// v2.24 : Synchronisation améliorée du chrono avec l'heure réelle
-// On vérifie que le chrono du flux est cohérent (ne recule pas, n'avance pas trop)
-const prevMs = liveClock ? liveClock.ms : null;
-const timeDiff = Date.now() - (liveClock ? liveClock.at : Date.now());
-const expectedMs = prevMs !== null ? prevMs + timeDiff : st.ms;
-
-// Si le chrono du flux recule ou avance de plus de 10 secondes par rapport à l'attendu, on garde le chrono local
-if (prevMs !== null && Math.abs(st.ms - expectedMs) > 10000) {
-    liveClock.ms = expectedMs;
-    liveClock.at = Date.now();
-} else {
-    liveClock = { ms: st.ms, at: Date.now(), run: !st.paused && !st.finished && !st.tab, ot: st.isOvertime };
-}
-
-// Synchronisation périodique avec l'heure réelle (toutes les 30 secondes)
-if (!window.liveLastSync || Date.now() - window.liveLastSync > 30000) {
-    window.liveLastSync = Date.now();
-    // Si le chrono est en cours et que le chrono local est très en avance/retard, recalibrer
-    if (liveClock && liveClock.run && !st.paused && !st.finished) {
-        const currentExpectedMs = liveClock.ms + (Date.now() - liveClock.at);
-        const currentPeriod = Math.floor(currentExpectedMs / 1200000);
-        const periodEndMs = (currentPeriod + 1) * 1200000;
-        // Si on dépasse la fin du tiers de plus de 5 secondes, recalibrer
-        if (currentExpectedMs > periodEndMs + 5000) {
-            liveClock.ms = periodEndMs;
-            liveClock.at = Date.now();
-        }
-    }
-}
-
-if (chronoEl) chronoEl.textContent = st.tab ? '—' : liveMmss(st.ms / 1000);
+                    // v2.25 : CHRONO ULTRA-ROBUSTE - Multi-sources avec détection anomalies
+                    
+                    // === 1. Détecter le début du match ===
+                    if (!liveMatchStartTime && !st.paused && (st.events.length > 0 || st.ms > 0)) {
+                        liveMatchStartTime = Date.now();
+                        liveMatchStartMs = st.ms;
+                    }
+                    
+                    // === 2. Détecter un engagement (reprise après pause) ===
+                    const wasPausedBefore = liveSeen?.wasPaused === true;
+                    const isNowRunning = !st.paused && !st.finished && !st.tab;
+                    if (wasPausedBefore && isNowRunning) {
+                        liveLastEngagementTime = Date.now();
+                        liveLastEngagementMs = st.ms;
+                        liveClockSource = 'engagement';
+                    }
+                    
+                    // === 3. Vérifier cohérence du chrono FFHG ===
+                    const prevMs = liveClock?.ms;
+                    const timeDiff = Date.now() - (liveClock?.at || Date.now());
+                    const expectedMs = prevMs !== null ? prevMs + timeDiff : st.ms;
+                    const diff = Math.abs(st.ms - expectedMs);
+                    
+                    // === 4. Décider de la source du chrono ===
+                    if (diff > 10000) {
+                        // FFHG trop incohérent (>10s d'écart) → on garde/basculer sur chrono local
+                        liveClock = {
+                            ms: expectedMs,
+                            at: Date.now(),
+                            run: isNowRunning,
+                            ot: st.isOvertime,
+                            source: 'local'
+                        };
+                        liveClockSource = 'local';
+                    } else if (st.paused && !livePrev?.paused) {
+                        // Pause détectée → mémoriser
+                        liveClockSource = 'ffhg';
+                        liveClock = { ms: st.ms, at: Date.now(), run: false, ot: st.isOvertime, source: 'ffhg' };
+                    } else {
+                        // FFHG cohérent → on le prend
+                        liveClock = { ms: st.ms, at: Date.now(), run: isNowRunning, ot: st.isOvertime, source: 'ffhg' };
+                        liveClockSource = 'ffhg';
+                    }
+                    
+                    // === 5. Synchronisation périodique avec l'heure (toutes les 30s) ===
+                    if (!window.liveLastSync || Date.now() - window.liveLastSync > 30000) {
+                        window.liveLastSync = Date.now();
+                        
+                        if (liveClock?.run && !st.paused && !st.finished && liveMatchStartTime) {
+                            // Calculer le temps attendu depuis le début du match
+                            const expectedFromStart = liveMatchStartMs + (Date.now() - liveMatchStartTime);
+                            const currentPeriod = Math.min(3, Math.floor(expectedFromStart / 1200000));
+                            const periodEndMs = (currentPeriod + 1) * 1200000;
+                            
+                            // Si on dépasse la fin du tiers de >30s → recalibrer
+                            if (expectedFromStart > periodEndMs + 30000) {
+                                liveClock.ms = periodEndMs;
+                                liveClock.at = Date.now();
+                                liveClockSource = 'sync';
+                            }
+                            
+                            // Si le chrono est trop en retard (>10s) → recalibrer
+                            if (expectedFromStart - liveClock.ms > 10000) {
+                                liveClock.ms = Math.min(expectedFromStart, periodEndMs);
+                                liveClock.at = Date.now();
+                                liveClockSource = 'sync';
+                            }
+                        }
+                    }
+                    
+                    // === 6. Détection anomalies du flux FFHG ===
+                    // Stocker dans l'historique
+                    liveClockHistory.push({ ms: st.ms, at: Date.now(), source: liveClockSource });
+                    if (liveClockHistory.length > 10) liveClockHistory.shift();
+                    
+                    // Détecter si chrono FFHG bloqué (même valeur pendant >30s)
+                    if (liveClockHistory.length >= 5) {
+                        const last5 = liveClockHistory.slice(-5);
+                        const allSame = last5.every((v, i, arr) => i === 0 || v.ms === arr[0].ms);
+                        const timeElapsed = Date.now() - last5[0].at;
+                        
+                        if (allSame && timeElapsed > 30000) {
+                            // Chrono FFHG bloqué → basculer sur local
+                            const localMs = liveClock.ms + timeElapsed;
+                            const currentPeriod = Math.floor(localMs / 1200000);
+                            const periodEnd = (currentPeriod + 1) * 1200000;
+                            liveClock.ms = Math.min(localMs, periodEnd);
+                            liveClock.at = Date.now();
+                            liveClockSource = 'local';
+                        }
+                    }
+                    
+                    // === 7. Détecter si chrono FFHG recule ===
+                    if (liveClockHistory.length >= 2) {
+                        const last = liveClockHistory[liveClockHistory.length - 1];
+                        const prev = liveClockHistory[liveClockHistory.length - 2];
+                        if (last.ms < prev.ms && Math.abs(last.at - prev.at) < 10000) {
+                            // Chrono FFHG recule → ignorer et garder le chrono local
+                            liveClock.ms = prev.ms + (last.at - prev.at);
+                            liveClock.at = last.at;
+                            liveClockSource = 'local';
+                        }
+                    }
+                    if (chronoEl) chronoEl.textContent = st.tab ? '—' : liveMmss(st.ms / 1000);
+                    if (chronoEl) chronoEl.textContent = st.tab ? '—' : liveMmss(st.ms / 1000);
+                    // v2.25 : Indicateur visuel du statut du chrono
+                    let chronoStatusEl = document.getElementById('live-chrono-status');
+                    if (!chronoStatusEl) {
+                        chronoStatusEl = document.createElement('span');
+                        chronoStatusEl.id = 'live-chrono-status';
+                        chronoStatusEl.className = 'text-[10px] ml-2';
+                        chronoEl.parentNode.appendChild(chronoStatusEl);
+                    }
+                    const statusIcons = { 'ffhg': '✓', 'local': '⏱️', 'sync': '↻', 'engagement': '▶️', 'init': '⏳', 'reset': '🔄' };
+                    const statusColors = { 'ffhg': 'text-green-500', 'local': 'text-amber-500', 'sync': 'text-blue-500', 'engagement': 'text-purple-500', 'init': 'text-gray-400', 'reset': 'text-red-500' };
+                    chronoStatusEl.textContent = statusIcons[liveClockSource] || '❓';
+                    chronoStatusEl.className = `text-[10px] ml-2 ${statusColors[liveClockSource] || 'text-gray-400'}`;
+                    chronoStatusEl.title = `Source: ${liveClockSource} | Début: ${liveMatchStartTime ? new Date(liveMatchStartTime).toLocaleTimeString() : 'N/A'}`;
+                    
                     const btnSaveLive = document.getElementById('live-save-result');
                     if (btnSaveLive) btnSaveLive.style.display = st.finished ? '' : 'none';
                     const mySide = liveIsMyTeam(st.homeName) ? 'home' : (liveIsMyTeam(st.awayName) ? 'away' : '');
@@ -11108,10 +11197,33 @@ if (chronoEl) chronoEl.textContent = st.tab ? '—' : liveMmss(st.ms / 1000);
                 liveClockTimer = setInterval(() => {
                     const el = document.getElementById('live-chrono');
                     if (!el || !liveClock || !liveClock.run) return;
+                    
+                    // v2.25 : Calcul du chrono local avec plafonnage par tiers
                     let msC = liveClock.ms + (Date.now() - liveClock.at);
-                    if (!liveClock.ot) { const per = Math.floor(liveClock.ms / 1200000); msC = Math.min(msC, Math.min(3, per + 1) * 1200000); }
+                    
+                    // Plafonner à la fin du tiers en cours (sauf en prolongation)
+                    if (!liveClock.ot) {
+                        const currentPeriod = Math.floor(liveClock.ms / 1200000);
+                        const periodEndMs = (currentPeriod + 1) * 1200000;
+                        msC = Math.min(msC, periodEndMs);
+                        
+                        // Si on atteint la fin du tiers, forcer une vérification
+                        if (msC >= periodEndMs - 1000) {
+                            liveClockSource = 'sync';
+                        }
+                    }
+                    
                     el.textContent = liveMmss(msC / 1000);
-                }, 1000);
+                    
+                    // v2.25 : Mettre à jour l'indicateur en temps réel
+                    const statusEl = document.getElementById('live-chrono-status');
+                    if (statusEl) {
+                        const statusIcons = { 'ffhg': '✓', 'local': '⏱️', 'sync': '↻', 'engagement': '▶️', 'init': '⏳', 'reset': '🔄' };
+                        const statusColors = { 'ffhg': 'text-green-500', 'local': 'text-amber-500', 'sync': 'text-blue-500', 'engagement': 'text-purple-500', 'init': 'text-gray-400', 'reset': 'text-red-500' };
+                        statusEl.textContent = statusIcons[liveClockSource] || '❓';
+                        statusEl.className = `text-[10px] ml-2 ${statusColors[liveClockSource] || 'text-gray-400'}`;
+                    }
+                }, 1000);;
                 // v2.18 : poll adaptatif — horloge de 5 s : au repos un relevé toutes les 20 s, mais toutes
                 // les 5 s pendant 90 s après une action (tir cadré → rebond probable) : le but suit le tir de près.
                 liveTimer = setInterval(() => { if (document.visibilityState !== 'visible') return; if (Date.now() < liveFastUntil || Date.now() - liveLastPoll >= 20000) liveCheck(); }, 5000);
