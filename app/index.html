@@ -8373,7 +8373,21 @@ ${cards}
 
         // ==================== DEBOUNCE UI ====================
         let uiTimer = null;
-        function scheduleUI() { if (uiTimer) clearTimeout(uiTimer); uiTimer = setTimeout(() => { uiTimer = null; try { updateUI(); } catch (e) { console.error(e); } }, 120); }
+        function scheduleUI() {
+    if (uiTimer) return;
+
+    uiTimer = setTimeout(() => {
+
+        uiTimer = null;
+
+        try {
+            updateUI();
+        } catch (e) {
+            console.error(e);
+        }
+
+    }, 250);
+}
         const handleGoaliesImport = async (data) => { 
             let count = 0; 
             for(const row of data) { 
