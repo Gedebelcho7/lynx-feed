@@ -984,6 +984,7 @@
                         <div class="text-4xl md:text-6xl font-black tracking-wider text-lynx-red tabular-nums leading-none"><span id="live-score">0 - 0</span></div>
                         <div id="live-chrono" class="text-xs md:text-base font-bold text-gray-400 tabular-nums mt-1">—</div>
                         <div id="live-shots" class="text-[10px] md:text-xs font-bold text-gray-500 tabular-nums mt-0.5" style="display:none">🎯 Tirs : 0 - 0</div>
+  <div id="live-gk-start" class="text-[10px] md:text-xs font-bold text-gray-500 mt-0.5" style="display:none">🥅 Partant : …</div>
                     </div>
                     <div class="flex flex-col md:flex-row items-center gap-2 md:gap-3 text-center md:text-left min-w-0">
                         <img id="live-away-logo" class="h-10 md:h-14 w-auto object-contain" alt="Logo visiteur" style="display:none">
@@ -4346,18 +4347,22 @@ if (evs.length) {
     const px = (min) => (Math.max(0, Math.min(1, min / maxMin)) * 100).toFixed(2);
     let inner = '';
     [[20, 'Fin T1'], [40, 'Fin T2'], [60, 'Fin T3']].forEach(t => { if (t[0] < maxMin) inner += `<div class=\"absolute top-0 bottom-0 w-px bg-gray-300 dark:bg-gray-600\" style=\"left:${px(t[0])}%\" title=\"${t[1]}\"></div>`; });
+    const _lane = {}; // anti-superposition — deux points à la même minute ne s'écrasent plus
     evs.forEach(e => {
         const min = minOf(e);
         const who = String(e.who || '').split('(')[0].trim();
         const timeStr = xmlEsc(String(e.time || e.temps || ''));
+        const _pos = px(min);
+        const _laneId = (e.ty === 'BUT' || /TIR|SHOT/i.test(String(e.ty))) ? ((e.side === lynxSide) ? 'haut' : 'bas') : 'milieu';
+        const _off = (_lane[_laneId + '@' + _pos] || 0) * 6; _lane[_laneId + '@' + _pos] = (_lane[_laneId + '@' + _pos] || 0) + 1;
         if (e.ty === 'BUT') {
             const mine = e.side === lynxSide;
-            inner += `<div class=\"absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}\" style=\"left:${px(min)}%\" title=\"${mine ? 'But Lynx' : 'But adverse'} – ${xmlEsc(who)} (${timeStr})\"><div class=\"w-3 h-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${mine ? 'bg-lynx-red' : 'bg-sky-700'}\"></div></div>`;
+            inner += `<div class=\"absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}\" style=\"left:calc(${_pos}% + ${_off}px)\" title=\"${mine ? 'But Lynx' : 'But adverse'} – ${xmlEsc(who)} (${timeStr})\"><div class=\"w-3 h-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${mine ? 'bg-lynx-red' : 'bg-sky-700'}\"></div></div>`;
         } else if (/TIR|SHOT/i.test(String(e.ty))) {
             const mine = e.side === lynxSide;
-            inner += `<div class=\"absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}\" style=\"left:${px(min)}%;opacity:0.4\" title=\"${mine ? 'Tir Lynx' : 'Tir adverse'} – ${xmlEsc(who)} (${timeStr})\"><div class=\"w-2 h-2 rounded-full ${mine ? 'bg-lynx-red/60' : 'bg-sky-700/60'}\"></div></div>`;
+            inner += `<div class=\"absolute -translate-x-1/2 ${mine ? 'top-0' : 'bottom-0'}\" style=\"left:calc(${_pos}% + ${_off}px);opacity:0.4\" title=\"${mine ? 'Tir Lynx' : 'Tir adverse'} – ${xmlEsc(who)} (${timeStr})\"><div class=\"w-2 h-2 rounded-full ${mine ? 'bg-lynx-red/60' : 'bg-sky-700/60'}\"></div></div>`;
         } else if (/PEN|PUN/i.test(String(e.ty))) {
-            inner += `<div class=\"absolute -translate-x-1/2 top-1/2 -mt-1\" style=\"left:${px(min)}%\" title=\"Pénalité ${xmlEsc(who)} (${timeStr})\"><div class=\"w-2 h-2 rotate-45 bg-amber-500\"></div></div>`;
+            inner += `<div class=\"absolute -translate-x-1/2 top-1/2 -mt-1\" style=\"left:calc(${_pos}% + ${_off}px)\" title=\"Pénalité ${xmlEsc(who)} (${timeStr})\"><div class=\"w-2 h-2 rotate-45 bg-amber-500\"></div></div>`;
         }
     });
 
@@ -10513,6 +10518,8 @@ if (!st.finished && !st.paused) {
             }
             function liveEnqueueAnim(item) {
                 if (!item || !liveAnimEnabled(item.key)) return;
+                // v2.23 : un tir éphémère ne s'accumule pas dans la file — on remplace le tir en attente par le nouveau
+                if (item.key === 'shot') { for (let qi = liveAnimQ.length - 1; qi >= 0; qi--) { if (liveAnimQ[qi] && liveAnimQ[qi].key === 'shot') liveAnimQ.splice(qi, 1); } }
                 liveAnimQ.push(item);
                 liveAnimPump();
             }
@@ -10872,6 +10879,24 @@ if (!st.finished && !st.paused) {
                     liveProbRender(st);
                     liveBadgeRender(st);
                     livePPRender(st);
+
+                    // v2.23 : gardien PARTANT — le premier but encaissé indique le gardien qui était en jeu ;
+                    // repli : l'unique gardien de l'effectif du flux. Fini de ne voir que « les 2 gardiens ».
+                    try {
+                        const gkStarter = (ownId) => {
+                            const firstA = st.events.find(e2 => e2.type === 'BUT' && e2.teamId !== ownId && e2.gkA);
+                            if (firstA) return firstA.gkA;
+                            const gks = (st.players || []).filter(p => p && p.isGoalie && p.teamId === ownId).map(p => p.name).filter(Boolean);
+                            return gks.length === 1 ? gks[0] : '';
+                        };
+                        const gkStH = gkStarter(st.homeId), gkStA = gkStarter(st.awayId);
+                        const gksEl = document.getElementById('live-gk-start');
+                        if (gksEl) {
+                            if (gkStH || gkStA) { gksEl.style.display = ''; gksEl.textContent = '🥅 Partant : ' + (String(st.homeName).slice(0, 18) || '?') + ' — ' + (gkStH || '?') + '  ·  ' + (String(st.awayName).slice(0, 18) || '?') + ' — ' + (gkStA || '?'); }
+                            else gksEl.style.display = 'none';
+                        }
+                    } catch (eGK) {}
+
                     const hLogo = document.getElementById('live-home-logo');
                     if (hLogo) { hLogo.src = getLogo(st.homeName); hLogo.alt = st.homeName; hLogo.style.display = ''; hLogo.onerror = () => { hLogo.style.display = 'none'; }; }
                     const aLogo = document.getElementById('live-away-logo');
@@ -10980,8 +11005,30 @@ if (!st.finished && !st.paused) {
                             liveClockSource = 'local';
                         }
                     }
+
+
+                    // v2.25 : NORMALISATION du chrono (recalage périodique demandé) — la valeur lissée
+                    // (liveClock : avance locale entre deux relevés) devient la vérité affichée ET la base
+                    // des chips de tiers ; le flux brut ne fait plus sauter le chrono à chaque relevé.
+                    try {
+                        let msF = liveClock ? (liveClock.run ? (liveClock.ms + (Date.now() - liveClock.at)) : liveClock.ms) : (st.ms || 0);
+                        // pause probable non signalée par le flux (fin de tiers floue) → on fige et on aligne sur la borne du tiers
+                        if (!st.paused && livePausePlausible({ paused: true, ms: st.ms })) {
+                            const borne = Math.min(3, Math.max(1, Math.ceil((st.evtMax || 0) / 1200))) * 1200 * 1000;
+                            msF = Math.min(borne, Math.max(st.ms || 0, borne === 1200000 ? (st.ms || 0) : borne));
+                            if (liveClock) { liveClock.run = false; liveClock.ms = msF; liveClock.at = Date.now(); }
+                        }
+                        if ((st.evtMax || 0) * 1000 > msF) msF = st.evtMax * 1000; // vérité terrain : un événement daté à 25 min prouve qu'au moins 25 min ont été jouées
+                        if (!st.finished) {
+                            st.ms = msF;
+                            st.period = st.tab || st.isOvertime ? 4 : Math.max(1, Math.min(3, Math.floor(msF / 1200000) + 1));
+                        }
+                    } catch (eC2) {}
                     if (chronoEl) chronoEl.textContent = st.tab ? '—' : liveMmss(st.ms / 1000);
-                    if (chronoEl) chronoEl.textContent = st.tab ? '—' : liveMmss(st.ms / 1000);
+                    // les chips (tiers entouré) sont recalculées APRÈS recalage, avec le chrono lissé
+                    try { st._chipCur = 0; if (!st.finished) document.getElementById('live-periods').innerHTML = livePeriodsFrom(st).chips; } catch (eL3) {}
+
+
                     // v2.25 : Indicateur visuel du statut du chrono
                     let chronoStatusEl = document.getElementById('live-chrono-status');
                     if (!chronoStatusEl) {
@@ -11040,15 +11087,27 @@ if (!st.finished && !st.paused) {
                             liveEnqueueAnim(liveAnimGoal(st, ev));
                             if (mine) { const c = document.getElementById('live-score-card'); c.classList.add('ring-4', 'ring-orange-500'); setTimeout(() => c.classList.remove('ring-4', 'ring-orange-500'), 2000); liveGoalPunch(st, ev); }
                         });
-                        // v2.14 : tirs cadrés en direct — on relève les nouveaux avant marquage, puis on anime le plus récent
+
+
+
+                        // v2.23 : CHAQUE tir est notifié IMMÉDIATEMENT (fini les regroupés à la fin du tiers) ;
+                        // la carte animée reste réservée au dernier tir relevé, sautée si un but arrive dans le même relevé
                         const newShots = st.events.filter(ev => ev.type === 'TIR' && !liveSeen.events.has(ev.id));
+                        newShots.forEach((ev, ix) => {
+                            const shotMine = mySide && ev.teamId === (mySide === 'home' ? st.homeId : st.awayId);
+                            const isLast = ix === newShots.length - 1;
+                            if (isLast && liveAnimEnabled('shot') && !gotGoal) {
+                                livePlay('shot', shotMine);
+                                liveEnqueueAnim(liveAnimShot(st, ev));
+                            } else {
+                                livePlay('shot', shotMine);
+                                liveNotify('🎯 Tir cadré', (ev.team || (shotMine ? liveMyTeamLabel() : '')) + (ev.time ? ' — ' + ev.time : '') + (ix < newShots.length - 1 ? ' + ' + (newShots.length - ix - 1) + ' autre(s)' : ''), 'tir-' + ev.id);
+                            }
+                        });
                         st.events.filter(ev => !liveSeen.events.has(ev.id)).forEach(ev => { liveSeen.events.add(ev.id); if (ev.type === 'SANCTION') liveEnqueueAnim(liveAnimPen(st, ev)); });
-                        if (newShots.length && liveAnimEnabled('shot') && !gotGoal) { // v2.18 : but annoncé dans le même relevé → la carte « tir cadré » qui suivrait le takeover est du bruit, on la saute
-                            const lastShot = newShots[newShots.length - 1];
-                            const shotMine = mySide && lastShot.teamId === (mySide === 'home' ? st.homeId : st.awayId);
-                            livePlay('shot', shotMine);
-                            liveEnqueueAnim(liveAnimShot(st, lastShot));
-                        }
+
+
+
                         if (!liveSeen.started && st.events.length > 0) {
                             liveSeen.started = true;
                             livePlay('matchStart', true);
@@ -11237,6 +11296,20 @@ if (!st.finished && !st.paused) {
                     }
                     
                     el.textContent = liveMmss(msC / 1000);
+
+                    // v2.25 : les chips de tiers (entourage) suivent le chrono local entre les relevés —
+                    // fini le tiers entouré qui n'avance jamais alors que le chrono tourne
+                    try {
+                        if (livePrev && !livePrev.finished && !liveClock.ot) {
+                            const curC = msC < 1200000 ? 1 : (msC < 2400000 ? 2 : 3);
+                            if (curC !== (livePrev._chipCur || 0)) {
+                                livePrev._chipCur = curC;
+                                livePrev.ms = msC;
+                                const pe = document.getElementById('live-periods');
+                                if (pe) pe.innerHTML = livePeriodsFrom(livePrev).chips;
+                            }
+                        }
+                    } catch (eTT) {}
                     
                     // v2.25 : Mettre à jour l'indicateur en temps réel
                     const statusEl = document.getElementById('live-chrono-status');
